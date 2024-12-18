@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.path import Path
 import matplotlib.patches as patches
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 
 class CellAnnotationTool(QMainWindow):
     def __init__(self):
@@ -28,12 +29,14 @@ class CellAnnotationTool(QMainWindow):
         self.drawing_path = []
         self.is_selecting = False
         self.annotations = {}
-        self.point_size = 50
+        self.point_size = 10
         self.x_column = None
         self.y_column = None
         self.cell_type_column = None
         self.scatter_artists = {}  # Store scatter plot artists
         self.background = None  # Store background for blitting
+        self.is_panning = False
+        self.pan_start = None
         
         # Setup UI
         self.setup_ui()
@@ -66,8 +69,8 @@ class CellAnnotationTool(QMainWindow):
         self.size_label = QLabel("Point Size:")
         size_layout.addWidget(self.size_label)
         self.size_slider = QSlider(Qt.Horizontal)
-        self.size_slider.setMinimum(10)
-        self.size_slider.setMaximum(200)
+        self.size_slider.setMinimum(1)
+        self.size_slider.setMaximum(100)
         self.size_slider.setValue(self.point_size)
         self.size_slider.valueChanged.connect(self.update_point_size)
         size_layout.addWidget(self.size_slider)
@@ -108,6 +111,11 @@ class CellAnnotationTool(QMainWindow):
         self.save_btn.clicked.connect(self.save_annotations)
         control_layout.addWidget(self.save_btn)
         
+        # Add Refresh View button
+        self.refresh_view_btn = QPushButton("Refresh View")
+        self.refresh_view_btn.clicked.connect(self.refresh_view)
+        control_layout.addWidget(self.refresh_view_btn)
+        
         # Add spacer
         control_layout.addStretch()
         
@@ -122,6 +130,7 @@ class CellAnnotationTool(QMainWindow):
         self.canvas.mpl_connect('button_press_event', self.on_mouse_press)
         self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
         self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+        self.canvas.mpl_connect('scroll_event', self.on_scroll)
         
         # Add column selectors after load button
         coord_layout = QVBoxLayout()
@@ -147,6 +156,77 @@ class CellAnnotationTool(QMainWindow):
         
         control_layout.insertLayout(1, coord_layout)  # Insert after load button
         
+    def detect_coordinate_columns(self, df):
+        """
+        Detect likely X and Y coordinate columns based on column names first, then numeric data.
+        Returns tuple of (x_col, y_col) or (None, None) if not found.
+        """
+        # Look for common coordinate column names
+        x_keywords = ['x', 'col']
+        y_keywords = ['y', 'row']
+        
+        x_candidates = []
+        y_candidates = []
+        
+        # First pass: look for exact matches (case insensitive)
+        for col in df.columns:
+            col_lower = col.lower()
+            # Check if column name exactly matches x or y
+            if col_lower in x_keywords:
+                x_candidates.append(col)
+            elif col_lower in y_keywords:
+                y_candidates.append(col)
+        
+        # Second pass: look for columns containing the keywords
+        if not (x_candidates and y_candidates):
+            for col in df.columns:
+                col_lower = col.lower()
+                # Check if column name contains coordinate keywords
+                if any(k in col_lower for k in x_keywords):
+                    x_candidates.append(col)
+                if any(k in col_lower for k in y_keywords):
+                    y_candidates.append(col)
+        
+        # If we found candidates by name, use the first ones
+        if x_candidates and y_candidates:
+            return x_candidates[0], y_candidates[0]
+        
+        # Fallback: find numeric columns with highest variance
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) >= 2:
+            variances = df[numeric_cols].var()
+            coord_cols = variances.nlargest(2).index.tolist()
+            return coord_cols[0], coord_cols[1]
+        
+        return None, None
+
+    def detect_cell_type_column(self, df):
+        """
+        Detect likely cell type column based on column name first, then number of unique values.
+        Returns column name or None if not found.
+        """
+        type_keywords = ['type', 'class', 'cluster']
+        
+        # First look for columns with type-related names
+        type_candidates = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(k in col_lower for k in type_keywords):
+                # Check if the column has a reasonable number of unique values
+                unique_vals = df[col].nunique()
+                if 1 < unique_vals < 25:
+                    return col
+                type_candidates.append(col)
+        
+        # If no suitable named columns found, look for any column with appropriate number of unique values
+        for col in df.columns:
+            if col not in type_candidates:  # Skip already checked columns
+                unique_vals = df[col].nunique()
+                if 1 < unique_vals < 25:
+                    return col
+        
+        return None
+
     def load_data(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open CSV File", "", "CSV Files (*.csv)")
         if file_name:
@@ -165,6 +245,18 @@ class CellAnnotationTool(QMainWindow):
             self.y_combo.addItems(all_columns)
             self.cell_type_combo.addItems(all_columns)
             
+            # Auto-detect columns
+            x_col, y_col = self.detect_coordinate_columns(self.data)
+            cell_type_col = self.detect_cell_type_column(self.data)
+            
+            # Set detected columns in combo boxes
+            if x_col and y_col:
+                self.x_combo.setCurrentText(x_col)
+                self.y_combo.setCurrentText(y_col)
+            
+            if cell_type_col:
+                self.cell_type_combo.setCurrentText(cell_type_col)
+            
             # Disconnect previous connections if they exist
             try:
                 self.x_combo.currentTextChanged.disconnect()
@@ -181,6 +273,10 @@ class CellAnnotationTool(QMainWindow):
             # Clear the plot
             self.ax.clear()
             self.canvas.draw()
+            
+            # Automatically update plot if all columns were detected
+            if x_col and y_col and cell_type_col:
+                self.update_plot()
     
     def check_and_update_plot(self):
         # Only update plot if all three columns are selected and different from initial state
@@ -211,6 +307,11 @@ class CellAnnotationTool(QMainWindow):
     def plot_data(self):
         if self.data is None or not all([self.x_column, self.y_column, self.cell_type_column]):
             return
+            
+        # Store current view limits before clearing
+        current_xlim = self.ax.get_xlim()
+        current_ylim = self.ax.get_ylim()
+        had_previous_view = hasattr(self, 'original_xlim')
             
         self.ax.clear()
         self.scatter_artists.clear()
@@ -269,8 +370,16 @@ class CellAnnotationTool(QMainWindow):
         self.ax.grid(True, linestyle='--', alpha=0.3)
         self.ax.set_aspect('equal', adjustable='box')
         
+        # Store original view limits only on first plot
+        if not had_previous_view:
+            self.original_xlim = self.ax.get_xlim()
+            self.original_ylim = self.ax.get_ylim()
+        else:
+            # Restore the previous view limits
+            self.ax.set_xlim(current_xlim)
+            self.ax.set_ylim(current_ylim)
+        
         self.canvas.draw()
-        # Store background for blitting
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
     
     def confirm_selection(self):
@@ -301,15 +410,21 @@ class CellAnnotationTool(QMainWindow):
         self.annotation_display.setText("\n".join(text))
     
     def on_mouse_press(self, event):
-        if event.button == 1 and event.inaxes == self.ax:
+        if event.button == 1 and event.inaxes == self.ax:  # Left click
             self.is_selecting = True
             self.drawing_path = [(event.xdata, event.ydata)]
-            
+        elif event.button == 3 and event.inaxes == self.ax:  # Right click
+            self.is_panning = True
+            self.pan_start = (event.xdata, event.ydata)
+            self.canvas.setCursor(Qt.ClosedHandCursor)
+    
     def on_mouse_move(self, event):
-        if self.is_selecting and event.inaxes == self.ax:
+        if event.inaxes != self.ax:
+            return
+            
+        if self.is_selecting:
             if self.selection_combo.currentText() == "Lasso":
                 self.drawing_path.append((event.xdata, event.ydata))
-                # Efficient redraw using blitting
                 if self.background is not None:
                     self.canvas.restore_region(self.background)
                     path = Path(self.drawing_path)
@@ -317,23 +432,69 @@ class CellAnnotationTool(QMainWindow):
                     self.ax.add_patch(patch)
                     self.ax.draw_artist(patch)
                     self.canvas.blit(self.ax.bbox)
+                    patch.remove()
+        elif self.is_panning and event.xdata and event.ydata:
+            dx = event.xdata - self.pan_start[0]
+            dy = event.ydata - self.pan_start[1]
+            
+            xlim = self.ax.get_xlim()
+            ylim = self.ax.get_ylim()
+            
+            self.ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
+            self.ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
+            self.canvas.draw()
+            # Update background after panning
+            self.background = self.canvas.copy_from_bbox(self.ax.bbox)
     
     def on_mouse_release(self, event):
-        if event.button == 1 and event.inaxes == self.ax:
+        if event.button == 1:  # Left click release
             self.is_selecting = False
             if self.selection_combo.currentText() == "Single":
-                # Vectorized distance calculation
                 distances = np.sqrt(np.sum((self.coords - [event.xdata, event.ydata])**2, axis=1))
                 closest_point = np.argmin(distances)
                 self.selected_points.add(closest_point)
             else:
-                # Efficient lasso selection
                 path = Path(self.drawing_path)
                 selected = path.contains_points(self.coords)
                 self.selected_points.update(np.where(selected)[0])
             
             self.plot_data()
             self.drawing_path = []
+        elif event.button == 3:  # Right click release
+            self.is_panning = False
+            self.canvas.setCursor(Qt.ArrowCursor)
+    
+    def on_scroll(self, event):
+        if not event.inaxes:
+            return
+            
+        cur_xlim = self.ax.get_xlim()
+        cur_ylim = self.ax.get_ylim()
+        
+        xdata = event.xdata
+        ydata = event.ydata
+        
+        # Get the zoom factor
+        base_scale = 1.1
+        if event.button == 'up':
+            scale_factor = 1 / base_scale
+        elif event.button == 'down':
+            scale_factor = base_scale
+        else:
+            scale_factor = 1
+            
+        # Calculate new limits
+        new_width = (cur_xlim[1] - cur_xlim[0]) * scale_factor
+        new_height = (cur_ylim[1] - cur_ylim[0]) * scale_factor
+        
+        relx = (cur_xlim[1] - xdata) / (cur_xlim[1] - cur_xlim[0])
+        rely = (cur_ylim[1] - ydata) / (cur_ylim[1] - cur_ylim[0])
+        
+        self.ax.set_xlim([xdata - new_width * (1-relx), xdata + new_width * relx])
+        self.ax.set_ylim([ydata - new_height * (1-rely), ydata + new_height * rely])
+        self.canvas.draw()
+        # Update background after view change
+        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
     
     def clear_selection(self):
         self.selected_points.clear()
@@ -377,6 +538,27 @@ class CellAnnotationTool(QMainWindow):
         # Update display
         self.plot_data()
         self.update_annotation_display()
+    
+    def refresh_view(self):
+        """Reset the view to show all current data points"""
+        if self.coords is not None and len(self.coords) > 0:
+            # Add 5% padding to the limits
+            padding = 0.05
+            
+            x_min, x_max = self.coords[:, 0].min(), self.coords[:, 0].max()
+            y_min, y_max = self.coords[:, 1].min(), self.coords[:, 1].max()
+            
+            x_range = x_max - x_min
+            y_range = y_max - y_min
+            
+            self.ax.set_xlim([x_min - x_range * padding, 
+                             x_max + x_range * padding])
+            self.ax.set_ylim([y_min - y_range * padding, 
+                             y_max + y_range * padding])
+            
+            self.canvas.draw()
+            # Update background after view change
+            self.background = self.canvas.copy_from_bbox(self.ax.bbox)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
