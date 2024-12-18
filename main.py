@@ -23,11 +23,17 @@ class CellAnnotationTool(QMainWindow):
         
         # Initialize data structures
         self.data = None
+        self.coords = None  # NumPy array for coordinates
         self.selected_points = set()
         self.drawing_path = []
         self.is_selecting = False
-        self.annotations = {}  # Dictionary to store all annotations
-        self.point_size = 50  # Default point size
+        self.annotations = {}
+        self.point_size = 50
+        self.x_column = None
+        self.y_column = None
+        self.cell_type_column = None
+        self.scatter_artists = {}  # Store scatter plot artists
+        self.background = None  # Store background for blitting
         
         # Setup UI
         self.setup_ui()
@@ -73,7 +79,7 @@ class CellAnnotationTool(QMainWindow):
         self.selection_label = QLabel("Selection Mode:")
         control_layout.addWidget(self.selection_label)
         self.selection_combo = QComboBox()
-        self.selection_combo.addItems(["Single", "Lasso"])
+        self.selection_combo.addItems([ "Lasso", "Single"])
         control_layout.addWidget(self.selection_combo)
         
         # New cell type input
@@ -117,63 +123,155 @@ class CellAnnotationTool(QMainWindow):
         self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
         self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
         
+        # Add column selectors after load button
+        coord_layout = QVBoxLayout()
+        
+        # Add cell type column selector
+        cell_type_layout = QHBoxLayout()
+        cell_type_layout.addWidget(QLabel("Cell Type Column:"))
+        self.cell_type_combo = QComboBox()
+        cell_type_layout.addWidget(self.cell_type_combo)
+        coord_layout.addLayout(cell_type_layout)
+        
+        x_layout = QHBoxLayout()
+        x_layout.addWidget(QLabel("X Column:"))
+        self.x_combo = QComboBox()
+        x_layout.addWidget(self.x_combo)
+        coord_layout.addLayout(x_layout)
+        
+        y_layout = QHBoxLayout()
+        y_layout.addWidget(QLabel("Y Column:"))
+        self.y_combo = QComboBox()
+        y_layout.addWidget(self.y_combo)
+        coord_layout.addLayout(y_layout)
+        
+        control_layout.insertLayout(1, coord_layout)  # Insert after load button
+        
     def load_data(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open CSV File", "", "CSV Files (*.csv)")
         if file_name:
+            # Load data efficiently
             self.data = pd.read_csv(file_name)
-            self.annotations = {}  # Reset annotations
+            self.annotations = {}
             self.selected_points.clear()
-            self.plot_data()
-            self.update_annotation_display()
+            
+            # Update all column selectors
+            self.x_combo.clear()
+            self.y_combo.clear()
+            self.cell_type_combo.clear()
+            
+            all_columns = self.data.columns
+            self.x_combo.addItems(all_columns)
+            self.y_combo.addItems(all_columns)
+            self.cell_type_combo.addItems(all_columns)
+            
+            # Disconnect previous connections if they exist
+            try:
+                self.x_combo.currentTextChanged.disconnect()
+                self.y_combo.currentTextChanged.disconnect()
+                self.cell_type_combo.currentTextChanged.disconnect()
+            except:
+                pass
+            
+            # Connect column change events
+            self.x_combo.currentTextChanged.connect(self.check_and_update_plot)
+            self.y_combo.currentTextChanged.connect(self.check_and_update_plot)
+            self.cell_type_combo.currentTextChanged.connect(self.check_and_update_plot)
+            
+            # Clear the plot
+            self.ax.clear()
+            self.canvas.draw()
+    
+    def check_and_update_plot(self):
+        # Only update plot if all three columns are selected and different from initial state
+        if (self.x_combo.currentText() and 
+            self.y_combo.currentText() and 
+            self.cell_type_combo.currentText() and
+            self.x_combo.currentIndex() != 0 and
+            self.y_combo.currentIndex() != 0 and
+            self.cell_type_combo.currentIndex() != 0):
+            self.update_plot()
+    
+    def update_plot(self):
+        if not all([self.x_combo.currentText(), self.y_combo.currentText(), self.cell_type_combo.currentText()]):
+            return
+            
+        self.x_column = self.x_combo.currentText()
+        self.y_column = self.y_combo.currentText()
+        self.cell_type_column = self.cell_type_combo.currentText()
+        
+        # Store coordinates in NumPy array for faster access
+        self.coords = np.column_stack((
+            self.data[self.x_column].values,
+            self.data[self.y_column].values
+        ))
+        
+        self.plot_data()
     
     def plot_data(self):
-        if self.data is None:
+        if self.data is None or not all([self.x_column, self.y_column, self.cell_type_column]):
             return
-        
+            
         self.ax.clear()
+        self.scatter_artists.clear()
         
-        # Plot original cell types with lower alpha
-        unique_types = self.data['cell_type'].unique()
+        # Use numpy operations for faster processing
+        unique_types = np.unique(self.data[self.cell_type_column].values)
         colors = plt.cm.tab20(np.linspace(0, 1, len(unique_types)))
         color_dict = dict(zip(unique_types, colors))
         
-        # Plot points that haven't been annotated yet
-        annotated_indices = set().union(*self.annotations.values()) if self.annotations else set()
+        annotated_indices = np.array(list(set().union(*self.annotations.values()))) if self.annotations else np.array([])
+        
+        # Vectorized operations for plotting
         for cell_type in unique_types:
-            mask = (self.data['cell_type'] == cell_type) & \
-                  (~self.data.index.isin(annotated_indices))
-            self.ax.scatter(self.data.loc[mask, 'x'], 
-                          self.data.loc[mask, 'y'],
-                          c=[color_dict[cell_type]],
-                          label=f"Original: {cell_type}",
-                          alpha=0.3,
-                          s=self.point_size)
+            mask = (self.data[self.cell_type_column].values == cell_type)
+            if len(annotated_indices):
+                mask &= ~np.isin(np.arange(len(self.data)), annotated_indices)
+            
+            if np.any(mask):
+                scatter = self.ax.scatter(
+                    self.coords[mask, 0],
+                    self.coords[mask, 1],
+                    c=[color_dict[cell_type]],
+                    label=f"Original: {cell_type}",
+                    alpha=0.3,
+                    s=self.point_size
+                )
+                self.scatter_artists[cell_type] = scatter
         
-        # Plot annotated points with full alpha
+        # Plot annotations
         for new_type, indices in self.annotations.items():
-            points = self.data.loc[list(indices)]
-            self.ax.scatter(points['x'], points['y'],
-                          label=f"New: {new_type}",
-                          alpha=1.0,
-                          s=self.point_size)
+            if indices:
+                idx_array = np.array(list(indices))
+                scatter = self.ax.scatter(
+                    self.coords[idx_array, 0],
+                    self.coords[idx_array, 1],
+                    label=f"New: {new_type}",
+                    alpha=1.0,
+                    s=self.point_size
+                )
+                self.scatter_artists[new_type] = scatter
         
-        # Highlight currently selected points
+        # Plot selected points
         if self.selected_points:
-            selected_data = self.data.iloc[list(self.selected_points)]
-            self.ax.scatter(selected_data['x'], selected_data['y'],
-                          c='red', s=self.point_size*1.5, alpha=0.5,
-                          label='Selected')
+            selected_array = np.array(list(self.selected_points))
+            scatter = self.ax.scatter(
+                self.coords[selected_array, 0],
+                self.coords[selected_array, 1],
+                c='red',
+                s=self.point_size*1.5,
+                alpha=0.5,
+                label='Selected'
+            )
+            self.scatter_artists['selected'] = scatter
         
-        # Place legend outside of the plot
         self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
-        
-        # Add grid for better visibility
         self.ax.grid(True, linestyle='--', alpha=0.3)
-        
-        # Equal aspect ratio for proper spatial visualization
         self.ax.set_aspect('equal', adjustable='box')
         
         self.canvas.draw()
+        # Store background for blitting
+        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
     
     def confirm_selection(self):
         if not self.selected_points:
@@ -211,27 +309,27 @@ class CellAnnotationTool(QMainWindow):
         if self.is_selecting and event.inaxes == self.ax:
             if self.selection_combo.currentText() == "Lasso":
                 self.drawing_path.append((event.xdata, event.ydata))
-                # Redraw the lasso
-                self.plot_data()
-                path = Path(self.drawing_path)
-                patch = patches.PathPatch(path, fill=False, color='red')
-                self.ax.add_patch(patch)
-                self.canvas.draw()
+                # Efficient redraw using blitting
+                if self.background is not None:
+                    self.canvas.restore_region(self.background)
+                    path = Path(self.drawing_path)
+                    patch = patches.PathPatch(path, fill=False, color='red')
+                    self.ax.add_patch(patch)
+                    self.ax.draw_artist(patch)
+                    self.canvas.blit(self.ax.bbox)
     
     def on_mouse_release(self, event):
         if event.button == 1 and event.inaxes == self.ax:
             self.is_selecting = False
             if self.selection_combo.currentText() == "Single":
-                # Single point selection
-                distances = np.sqrt((self.data['x'] - event.xdata)**2 + 
-                                 (self.data['y'] - event.ydata)**2)
-                closest_point = distances.idxmin()
+                # Vectorized distance calculation
+                distances = np.sqrt(np.sum((self.coords - [event.xdata, event.ydata])**2, axis=1))
+                closest_point = np.argmin(distances)
                 self.selected_points.add(closest_point)
             else:
-                # Lasso selection
+                # Efficient lasso selection
                 path = Path(self.drawing_path)
-                points = np.column_stack((self.data['x'], self.data['y']))
-                selected = path.contains_points(points)
+                selected = path.contains_points(self.coords)
                 self.selected_points.update(np.where(selected)[0])
             
             self.plot_data()
