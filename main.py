@@ -30,6 +30,7 @@ class CellAnnotationTool(QMainWindow):
         self.is_selecting = False
         self.annotations = {}
         self.point_size = 10
+        self.point_alpha = 0.3  # Default transparency value
         self.x_column = None
         self.y_column = None
         self.cell_type_column = None
@@ -37,6 +38,10 @@ class CellAnnotationTool(QMainWindow):
         self.background = None  # Store background for blitting
         self.is_panning = False
         self.pan_start = None
+        self.selection_history = []  # Track selection history
+        self.redo_history = []  # Track redo history
+        self.annotation_history = []  # Track annotation history
+        self.annotation_redo_history = []  # Track annotation redo history
         
         # Setup UI
         self.setup_ui()
@@ -78,6 +83,20 @@ class CellAnnotationTool(QMainWindow):
         size_layout.addWidget(self.size_value_label)
         control_layout.addLayout(size_layout)
         
+        # Transparency control
+        alpha_layout = QHBoxLayout()
+        self.alpha_label = QLabel("Transparency:")
+        alpha_layout.addWidget(self.alpha_label)
+        self.alpha_slider = QSlider(Qt.Horizontal)
+        self.alpha_slider.setMinimum(0)
+        self.alpha_slider.setMaximum(100)
+        self.alpha_slider.setValue(int(self.point_alpha * 100))
+        self.alpha_slider.valueChanged.connect(self.update_point_alpha)
+        alpha_layout.addWidget(self.alpha_slider)
+        self.alpha_value_label = QLabel(f"{int(self.point_alpha * 100)}%")
+        alpha_layout.addWidget(self.alpha_value_label)
+        control_layout.addLayout(alpha_layout)
+        
         # Selection mode
         self.selection_label = QLabel("Selection Mode:")
         control_layout.addWidget(self.selection_label)
@@ -105,6 +124,25 @@ class CellAnnotationTool(QMainWindow):
         self.clear_btn = QPushButton("Clear Current Selection")
         self.clear_btn.clicked.connect(self.clear_selection)
         control_layout.addWidget(self.clear_btn)
+        
+        # Add "Undo Last Selection" button after the Clear Selection button
+        self.undo_selection_btn = QPushButton("Undo Last Selection")
+        self.undo_selection_btn.clicked.connect(self.undo_last_selection)
+        control_layout.addWidget(self.undo_selection_btn)
+        
+        # Add "Redo Last Selection" button after the Undo button
+        self.redo_selection_btn = QPushButton("Redo Last Selection")
+        self.redo_selection_btn.clicked.connect(self.redo_last_selection)
+        control_layout.addWidget(self.redo_selection_btn)
+        
+        # Add annotation undo/redo buttons after the regular undo/redo buttons
+        self.undo_annotation_btn = QPushButton("Undo Last Annotation")
+        self.undo_annotation_btn.clicked.connect(self.undo_last_annotation)
+        control_layout.addWidget(self.undo_annotation_btn)
+        
+        self.redo_annotation_btn = QPushButton("Redo Last Annotation")
+        self.redo_annotation_btn.clicked.connect(self.redo_last_annotation)
+        control_layout.addWidget(self.redo_annotation_btn)
         
         # Save all annotations button
         self.save_btn = QPushButton("Save All Annotations")
@@ -335,12 +373,12 @@ class CellAnnotationTool(QMainWindow):
                     self.coords[mask, 1],
                     c=[color_dict[cell_type]],
                     label=f"Original: {cell_type}",
-                    alpha=0.3,
+                    alpha=self.point_alpha,  # Use the transparency value
                     s=self.point_size
                 )
                 self.scatter_artists[cell_type] = scatter
         
-        # Plot annotations
+        # Plot annotations with full opacity
         for new_type, indices in self.annotations.items():
             if indices:
                 idx_array = np.array(list(indices))
@@ -348,7 +386,7 @@ class CellAnnotationTool(QMainWindow):
                     self.coords[idx_array, 0],
                     self.coords[idx_array, 1],
                     label=f"New: {new_type}",
-                    alpha=1.0,
+                    alpha=1.0,  # Keep annotations fully visible
                     s=self.point_size
                 )
                 self.scatter_artists[new_type] = scatter
@@ -361,12 +399,16 @@ class CellAnnotationTool(QMainWindow):
                 self.coords[selected_array, 1],
                 c='red',
                 s=self.point_size*1.5,
-                alpha=0.5,
+                alpha=0.5,  # Keep selection semi-transparent
                 label='Selected'
             )
             self.scatter_artists['selected'] = scatter
         
-        self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+        # Create legend with fixed marker size
+        legend = self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+        for handle in legend.legend_handles:
+            handle._sizes = [30]  # Fix the size of legend markers to 10
+        
         self.ax.grid(True, linestyle='--', alpha=0.3)
         self.ax.set_aspect('equal', adjustable='box')
         
@@ -389,14 +431,21 @@ class CellAnnotationTool(QMainWindow):
         new_type = self.new_type_input.text().strip()
         if not new_type:
             return
+        
+        # Store current state for undo
+        previous_annotations = {k: v.copy() for k, v in self.annotations.items()}
+        self.annotation_history.append(previous_annotations)
+        self.annotation_redo_history.clear()  # Clear redo history on new annotation
             
         # Add selected points to annotations
         if new_type not in self.annotations:
             self.annotations[new_type] = set()
         self.annotations[new_type].update(self.selected_points)
         
-        # Clear current selection
+        # Clear current selection and selection history
         self.selected_points.clear()
+        self.selection_history.clear()
+        self.redo_history.clear()
         self.new_type_input.clear()
         
         # Update display
@@ -449,6 +498,8 @@ class CellAnnotationTool(QMainWindow):
     def on_mouse_release(self, event):
         if event.button == 1:  # Left click release
             self.is_selecting = False
+            previous_selection = self.selected_points.copy()  # Store previous state
+            
             if self.selection_combo.currentText() == "Single":
                 distances = np.sqrt(np.sum((self.coords - [event.xdata, event.ydata])**2, axis=1))
                 closest_point = np.argmin(distances)
@@ -457,6 +508,11 @@ class CellAnnotationTool(QMainWindow):
                 path = Path(self.drawing_path)
                 selected = path.contains_points(self.coords)
                 self.selected_points.update(np.where(selected)[0])
+            
+            # Only add to history if selection changed
+            if previous_selection != self.selected_points:
+                self.selection_history.append(previous_selection)
+                self.redo_history.clear()  # Clear redo history on new selection
             
             self.plot_data()
             self.drawing_path = []
@@ -497,6 +553,9 @@ class CellAnnotationTool(QMainWindow):
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
     
     def clear_selection(self):
+        # Update to clear all history when clearing selection
+        self.selection_history.clear()
+        self.redo_history.clear()
         self.selected_points.clear()
         self.plot_data()
     
@@ -521,9 +580,20 @@ class CellAnnotationTool(QMainWindow):
         self.size_value_label.setText(str(value))
         self.plot_data()
         
+    def update_point_alpha(self, value):
+        """Update the transparency of the points"""
+        self.point_alpha = value / 100.0
+        self.alpha_value_label.setText(f"{value}%")
+        self.plot_data()
+    
     def remove_annotation(self):
         if not self.selected_points:
             return
+        
+        # Store current state for undo
+        previous_annotations = {k: v.copy() for k, v in self.annotations.items()}
+        self.annotation_history.append(previous_annotations)
+        self.annotation_redo_history.clear()  # Clear redo history on new change
             
         # Remove selected points from all annotation sets
         for annotation_set in self.annotations.values():
@@ -559,6 +629,40 @@ class CellAnnotationTool(QMainWindow):
             self.canvas.draw()
             # Update background after view change
             self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+    
+    def undo_last_selection(self):
+        """Undo the last selection action"""
+        if self.selection_history:
+            current_selection = self.selected_points.copy()
+            self.selected_points = self.selection_history.pop()
+            self.redo_history.append(current_selection)
+            self.plot_data()
+
+    def redo_last_selection(self):
+        """Redo the last undone selection action"""
+        if self.redo_history:
+            current_selection = self.selected_points.copy()
+            self.selected_points = self.redo_history.pop()
+            self.selection_history.append(current_selection)
+            self.plot_data()
+
+    def undo_last_annotation(self):
+        """Undo the last annotation action"""
+        if self.annotation_history:
+            current_annotations = {k: v.copy() for k, v in self.annotations.items()}
+            self.annotation_redo_history.append(current_annotations)
+            self.annotations = self.annotation_history.pop()
+            self.plot_data()
+            self.update_annotation_display()
+
+    def redo_last_annotation(self):
+        """Redo the last undone annotation action"""
+        if self.annotation_redo_history:
+            current_annotations = {k: v.copy() for k, v in self.annotations.items()}
+            self.annotation_history.append(current_annotations)
+            self.annotations = self.annotation_redo_history.pop()
+            self.plot_data()
+            self.update_annotation_display()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
