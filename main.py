@@ -257,7 +257,23 @@ class CellAnnotationTool(QMainWindow):
         
         # After the existing column selectors, add continuous variable selectors
         continuous_layout = QVBoxLayout()
-        continuous_layout.addWidget(QLabel("Color by Continuous Variables (RGB):"))
+        
+        # Create horizontal layout for label and clear button
+        continuous_header = QHBoxLayout()
+        continuous_header.addWidget(QLabel("Color by Continuous Variables (RGB):"))
+        
+        # Add clear button with icon
+        clear_rgb_btn = QPushButton()
+        clear_rgb_btn.setIcon(QIcon("icons/clear.png"))
+        clear_rgb_btn.setToolTip("Clear RGB Variables")
+        # Set button size similar to confirm button
+        button_size = int(self.new_type_input.sizeHint().height() * 1.4)
+        clear_rgb_btn.setFixedSize(button_size, button_size)
+        clear_rgb_btn.setIconSize(QSize(button_size, button_size))
+        clear_rgb_btn.clicked.connect(self.clear_rgb_variables)
+        continuous_header.addWidget(clear_rgb_btn)
+        
+        continuous_layout.addLayout(continuous_header)
         
         # Function to create combo box with autocomplete
         def create_channel_combo(label, color):
@@ -991,6 +1007,13 @@ class CellAnnotationTool(QMainWindow):
                 colors[:, i] = 0
         
         return colors
+
+    def clear_rgb_variables(self):
+        """Reset all RGB variable selections to None"""
+        self.red_combo.setCurrentText("None")
+        self.green_combo.setCurrentText("None")
+        self.blue_combo.setCurrentText("None")
+        self.check_and_update_plot()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

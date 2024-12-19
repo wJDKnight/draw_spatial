@@ -1,28 +1,98 @@
 # Spatial Transcriptomics Cell Annotation Tool
 
-A GUI tool for manual annotation of cell types in spatial transcriptomics data.
+An interactive GUI tool for manual annotation of cell types in spatial transcriptomics data. This tool allows researchers to visualize and annotate cells in spatial data through an intuitive interface.
 
-## Setup Instructions
+## Features
 
-1. Create conda environment:
+- **Interactive Visualization**
+  - Scatter plot visualization of spatial data
+  - Color-coded cell types
+  - Adjustable point size and transparency
+  - Zoom and pan functionality
+  - RGB visualization mode for continuous variables
+
+- **Selection Tools**
+  - Single-point selection (W)
+  - Lasso selection (Q)
+  - Brush selection (E)
+  - Eraser tool (R)
+  - Adjustable brush size (+/-)
+
+- **Annotation Management**
+  - Add new cell type annotations
+  - Remove annotations
+  - Undo/redo support for selections and annotations
+  - Export annotated data to CSV
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone [repository-url]
+cd spatial-transcriptomics-annotation
+```
+
+2. Create conda environment:
 ```bash
 conda env create -f environment.yml
 ```
 
-2. Activate the environment:
+3. Activate the environment:
 ```bash
 conda activate spatial_annotation
 ```
 
-## Input Format
-The input CSV file should contain the following columns:
-- x: X coordinates of cells
-- y: Y coordinates of cells
-- cell_type: Initial cell type classifications
+## Usage
 
-## Features
-- Interactive scatter plot visualization
-- Color-coded cell types
-- Single-point selection
-- Lasso selection for multiple cells
-- Export annotated cell types 
+1. Launch the application:
+```bash
+python main.py
+```
+
+2. Load your data using the "Load Data" button
+3. Select columns for X/Y coordinates and cell types
+4. Use the selection tools to select cells:
+   - Press W for single-point selection
+   - Press Q for lasso selection
+   - Press E for brush selection
+   - Press R for eraser tool
+   - Use +/- to adjust brush size
+
+5. Enter a new annotation name and click confirm to annotate selected cells
+6. Save your annotations using the "Save All Annotations" button
+
+## Input Data Format
+
+The input CSV file should contain at least these columns:
+- Spatial coordinates (X, Y)
+- Initial cell type classifications
+- Optional: Additional columns for RGB visualization
+
+## Keyboard Shortcuts
+
+- Q: Lasso selection mode
+- W: Single-point selection mode
+- E: Brush selection mode
+- R: Eraser mode
+- D: Undo last selection
+- F: Redo last selection
+- +/-: Adjust brush size
+
+## Output
+
+The tool exports a CSV file containing:
+- All original columns
+- A new 'new_annotation' column with the manual annotations
+
+## Requirements
+
+- Python 3.9
+- PyQt5
+- pandas
+- matplotlib
+- numpy
+- scikit-learn
+
+## License
+
+[Add your license information here]
