@@ -8,14 +8,15 @@ import pandas as pd
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                            QHBoxLayout, QPushButton, QFileDialog, QLabel, 
-                           QComboBox, QLineEdit, QSlider)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QKeySequence
+                           QComboBox, QLineEdit, QSlider, QCompleter)
+from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtGui import QKeySequence, QIcon
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.path import Path
 import matplotlib.patches as patches
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+from sklearn.preprocessing import MinMaxScaler
 
 class CellAnnotationTool(QMainWindow):
     def __init__(self):
@@ -136,16 +137,32 @@ class CellAnnotationTool(QMainWindow):
         # Connect selection mode change
         self.selection_combo.currentTextChanged.connect(self.on_selection_mode_changed)
         
-        # New annotation name input
+        # New annotation name input with icon button layout
+        annotation_layout = QVBoxLayout()  # Change to vertical layout
         self.new_type_label = QLabel("New Annotation Name:")
-        control_layout.addWidget(self.new_type_label)
+        annotation_layout.addWidget(self.new_type_label)
+
+        # Create horizontal layout for input and confirm button
+        input_layout = QHBoxLayout()
         self.new_type_input = QLineEdit()
-        control_layout.addWidget(self.new_type_input)
-        
-        # Confirm selection button
-        self.confirm_btn = QPushButton("Confirm Selection")
+        input_layout.addWidget(self.new_type_input)
+
+        # Add confirm button to same row as input
+        self.confirm_btn = QPushButton()
+        self.confirm_btn.setIcon(QIcon("icons/confirm.png"))
+        self.confirm_btn.setToolTip("Confirm Selection")
+        # Get the height of the input field and set button size to 1.2x that height
+        input_height = self.new_type_input.sizeHint().height()
+        button_size = int(input_height * 1.4)
+        self.confirm_btn.setFixedSize(button_size, button_size)
+        # Set the icon size to match the button size
+        self.confirm_btn.setIconSize(QSize(button_size, button_size))
         self.confirm_btn.clicked.connect(self.confirm_selection)
-        control_layout.addWidget(self.confirm_btn)
+        input_layout.addWidget(self.confirm_btn)
+
+        # Add the input layout to the main annotation layout
+        annotation_layout.addLayout(input_layout)
+        control_layout.addLayout(annotation_layout)
         
         # Clear current selection button
         self.clear_btn = QPushButton("Clear Current Selection")
@@ -238,6 +255,51 @@ class CellAnnotationTool(QMainWindow):
         self.brush_size_slider.setToolTip("Use + and - keys to adjust size")
         self.brush_size_value_label.setToolTip("Use + and - keys to adjust size")
         
+        # After the existing column selectors, add continuous variable selectors
+        continuous_layout = QVBoxLayout()
+        continuous_layout.addWidget(QLabel("Color by Continuous Variables (RGB):"))
+        
+        # Function to create combo box with autocomplete
+        def create_channel_combo(label, color):
+            layout = QHBoxLayout()
+            layout.addWidget(QLabel(f"{label}:"))
+            combo = QComboBox()
+            combo.setEditable(True)
+            combo.setInsertPolicy(QComboBox.NoInsert)  # Don't automatically insert text
+            
+            # Remove automatic completion
+            combo.completer().setCompletionMode(QCompleter.PopupCompletion)
+            combo.completer().setCompletionMode(QCompleter.InlineCompletion)
+            combo.completer().popup() # Hide completion popup
+            
+            combo.addItem("None")
+            combo.setCurrentText("None")
+            
+            # Style the combo box with a color indicator
+            combo.setStyleSheet(f"""
+                QComboBox {{
+                    padding-left: 5px;
+                    border: 1px solid {color};
+                }}
+                QComboBox:editable {{
+                    background-color: white;
+                }}
+            """)
+            
+            layout.addWidget(combo)
+            return layout, combo
+        
+        # Create RGB channel selectors
+        red_layout, self.red_combo = create_channel_combo("Red", "red")
+        green_layout, self.green_combo = create_channel_combo("Green", "green")
+        blue_layout, self.blue_combo = create_channel_combo("Blue", "blue")
+        
+        continuous_layout.addLayout(red_layout)
+        continuous_layout.addLayout(green_layout)
+        continuous_layout.addLayout(blue_layout)
+        
+        control_layout.insertLayout(2, continuous_layout)
+    
     def detect_coordinate_columns(self, df):
         """
         Detect likely X and Y coordinate columns based on column names first, then numeric data.
@@ -359,15 +421,40 @@ class CellAnnotationTool(QMainWindow):
             # Automatically update plot if all columns were detected
             if x_col and y_col and cell_type_col:
                 self.update_plot()
+            
+            # Update continuous variable selectors
+            numeric_columns = self.data.select_dtypes(include=[np.number]).columns
+            for combo in [self.red_combo, self.green_combo, self.blue_combo]:
+                combo.clear()
+                combo.addItem("None")
+                combo.addItems(numeric_columns)
+                
+                # Disconnect any existing connections
+                try:
+                    combo.lineEdit().textChanged.disconnect()
+                    combo.currentTextChanged.disconnect()
+                except:
+                    pass
+                
+                # Only connect activated signal (triggered by dropdown selection or Enter)
+                combo.activated.connect(self.check_and_update_plot)
+            
+            # Connect selection change events
+            try:
+                self.red_combo.currentTextChanged.disconnect()
+                self.green_combo.currentTextChanged.disconnect()
+                self.blue_combo.currentTextChanged.disconnect()
+            except:
+                pass
+            
+            self.red_combo.currentTextChanged.connect(self.check_and_update_plot)
+            self.green_combo.currentTextChanged.connect(self.check_and_update_plot)
+            self.blue_combo.currentTextChanged.connect(self.check_and_update_plot)
     
     def check_and_update_plot(self):
-        # Only update plot if all three columns are selected and different from initial state
+        """Only update plot if coordinates are selected"""
         if (self.x_combo.currentText() and 
-            self.y_combo.currentText() and 
-            self.cell_type_combo.currentText() and
-            self.x_combo.currentIndex() != 0 and
-            self.y_combo.currentIndex() != 0 and
-            self.cell_type_combo.currentIndex() != 0):
+            self.y_combo.currentText()):
             self.update_plot()
     
     def update_plot(self):
@@ -387,86 +474,132 @@ class CellAnnotationTool(QMainWindow):
         self.plot_data()
     
     def plot_data(self):
-        if self.data is None or not all([self.x_column, self.y_column, self.cell_type_column]):
+        if self.data is None or not all([self.x_column, self.y_column]):
             return
-            
-        # Store current view limits before clearing
-        current_xlim = self.ax.get_xlim()
-        current_ylim = self.ax.get_ylim()
-        had_previous_view = hasattr(self, 'original_xlim')
-            
-        self.ax.clear()
-        self.scatter_artists.clear()
         
-        # Use numpy operations for faster processing
-        unique_types = np.unique(self.data[self.cell_type_column].values)
-        colors = plt.cm.tab20(np.linspace(0, 1, len(unique_types)))
-        color_dict = dict(zip(unique_types, colors))
-        
-        annotated_indices = np.array(list(set().union(*self.annotations.values()))) if self.annotations else np.array([])
-        
-        # Vectorized operations for plotting
-        for cell_type in unique_types:
-            mask = (self.data[self.cell_type_column].values == cell_type)
-            if len(annotated_indices):
-                mask &= ~np.isin(np.arange(len(self.data)), annotated_indices)
+        try:
+            # Store current view limits before clearing
+            try:
+                current_xlim = self.ax.get_xlim()
+                current_ylim = self.ax.get_ylim()
+                had_previous_view = True
+            except:
+                had_previous_view = False
             
-            if np.any(mask):
+            # Clear the plot
+            self.ax.clear()
+            self.scatter_artists.clear()
+            
+            # Check for RGB coloring
+            rgb_colors = self.get_rgb_colors()
+            
+            if rgb_colors is not None:
+                # Set dark grey background for RGB mode
+                self.ax.set_facecolor('#333333')
+                self.figure.set_facecolor('#333333')
+                
+                # Plot all points with RGB colors
+                non_annotated = set(range(len(self.data))) - set().union(*self.annotations.values())
+                if non_annotated:
+                    non_annotated = list(non_annotated)
+                    scatter = self.ax.scatter(
+                        self.coords[non_annotated, 0],
+                        self.coords[non_annotated, 1],
+                        c=rgb_colors[non_annotated],
+                        alpha=self.point_alpha,
+                        s=self.point_size
+                    )
+                    self.scatter_artists['rgb'] = scatter
+                
+                # Use white for axis labels and ticks
+                self.ax.tick_params(colors='white')
+                for spine in self.ax.spines.values():
+                    spine.set_color('white')
+            else:
+                # Reset to default white background for categorical coloring
+                self.ax.set_facecolor('white')
+                self.figure.set_facecolor('white')
+                
+                # Original coloring by cell type
+                unique_types = np.unique(self.data[self.cell_type_column].values)
+                colors = plt.cm.tab20(np.linspace(0, 1, len(unique_types)))
+                color_dict = dict(zip(unique_types, colors))
+                
+                annotated_indices = np.array(list(set().union(*self.annotations.values()))) if self.annotations else np.array([])
+                
+                for cell_type in unique_types:
+                    mask = (self.data[self.cell_type_column].values == cell_type)
+                    if len(annotated_indices):
+                        mask &= ~np.isin(np.arange(len(self.data)), annotated_indices)
+                    
+                    if np.any(mask):
+                        scatter = self.ax.scatter(
+                            self.coords[mask, 0],
+                            self.coords[mask, 1],
+                            c=[color_dict[cell_type]],
+                            label=f"{cell_type}",
+                            alpha=self.point_alpha,
+                            s=self.point_size
+                        )
+                        self.scatter_artists[cell_type] = scatter
+                
+                # Reset tick colors to default
+                self.ax.tick_params(colors='black')
+                for spine in self.ax.spines.values():
+                    spine.set_color('black')
+            
+            # Plot annotations
+            for new_type, indices in self.annotations.items():
+                if indices:
+                    idx_array = np.array(list(indices))
+                    scatter = self.ax.scatter(
+                        self.coords[idx_array, 0],
+                        self.coords[idx_array, 1],
+                        label=f"New: {new_type}",
+                        alpha=1.0,
+                        s=self.point_size
+                    )
+                    self.scatter_artists[new_type] = scatter
+            
+            # Plot selected points
+            if self.selected_points:
+                selected_array = np.array(list(self.selected_points))
                 scatter = self.ax.scatter(
-                    self.coords[mask, 0],
-                    self.coords[mask, 1],
-                    c=[color_dict[cell_type]],
-                    label=f"{cell_type}",
-                    alpha=self.point_alpha,  # Use the transparency value
-                    s=self.point_size
+                    self.coords[selected_array, 0],
+                    self.coords[selected_array, 1],
+                    c='red',
+                    s=self.point_size*1.5,
+                    alpha=0.5,
+                    label='Selected'
                 )
-                self.scatter_artists[cell_type] = scatter
-        
-        # Plot annotations with full opacity
-        for new_type, indices in self.annotations.items():
-            if indices:
-                idx_array = np.array(list(indices))
-                scatter = self.ax.scatter(
-                    self.coords[idx_array, 0],
-                    self.coords[idx_array, 1],
-                    label=f"New: {new_type}",
-                    alpha=1.0,  # Keep annotations fully visible
-                    s=self.point_size
-                )
-                self.scatter_artists[new_type] = scatter
-        
-        # Plot selected points
-        if self.selected_points:
-            selected_array = np.array(list(self.selected_points))
-            scatter = self.ax.scatter(
-                self.coords[selected_array, 0],
-                self.coords[selected_array, 1],
-                c='red',
-                s=self.point_size*1.5,
-                alpha=0.5,  # Keep selection semi-transparent
-                label='Selected'
-            )
-            self.scatter_artists['selected'] = scatter
-        
-        # Create legend with fixed marker size
-        legend = self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
-        for handle in legend.legend_handles:
-            handle._sizes = [30]  # Fix the size of legend markers to 10
-        
-        self.ax.grid(True, linestyle='--', alpha=0.3)
-        self.ax.set_aspect('equal', adjustable='box')
-        
-        # Store original view limits only on first plot
-        if not had_previous_view:
-            self.original_xlim = self.ax.get_xlim()
-            self.original_ylim = self.ax.get_ylim()
-        else:
-            # Restore the previous view limits
-            self.ax.set_xlim(current_xlim)
-            self.ax.set_ylim(current_ylim)
-        
-        self.canvas.draw()
-        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+                self.scatter_artists['selected'] = scatter
+            
+            # Create legend
+            if rgb_colors is None:  # Only show legend for categorical coloring
+                legend = self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+                for handle in legend.legend_handles:
+                    handle._sizes = [30]
+            
+            self.ax.set_aspect('equal', adjustable='box')
+            
+            # Store or restore view limits
+            if not had_previous_view:
+                # Let matplotlib set the initial view
+                self.ax.relim()
+                self.ax.autoscale_view()
+                self.original_xlim = self.ax.get_xlim()
+                self.original_ylim = self.ax.get_ylim()
+            else:
+                # Restore previous view
+                self.ax.set_xlim(current_xlim)
+                self.ax.set_ylim(current_ylim)
+            
+            # Draw the plot
+            self.canvas.draw()
+            self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+            
+        except Exception as e:
+            print(f"Error in plot_data: {e}")
     
     def confirm_selection(self):
         if not self.selected_points:
@@ -828,6 +961,36 @@ class CellAnnotationTool(QMainWindow):
                 current_size = self.brush_size_slider.value()
                 new_size = max(current_size - 1, self.brush_size_slider.minimum())
                 self.brush_size_slider.setValue(new_size)
+
+    def get_rgb_colors(self):
+        """Calculate RGB colors based on selected continuous variables"""
+        if self.data is None:
+            return None
+        
+        # Get selected columns
+        rgb_cols = []
+        for combo in [self.red_combo, self.green_combo, self.blue_combo]:
+            col = combo.currentText()
+            if col != "None":
+                rgb_cols.append(col)
+        
+        if not rgb_cols:
+            return None
+        
+        # Create color array
+        colors = np.zeros((len(self.data), 3))
+        scaler = MinMaxScaler()
+        
+        # Fill in selected channels
+        for i, col in enumerate([self.red_combo.currentText(), 
+                               self.green_combo.currentText(), 
+                               self.blue_combo.currentText()]):
+            if col != "None":
+                colors[:, i] = scaler.fit_transform(self.data[col].values.reshape(-1, 1)).ravel()
+            else:
+                colors[:, i] = 0
+        
+        return colors
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
