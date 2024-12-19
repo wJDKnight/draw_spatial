@@ -45,6 +45,7 @@ class CellAnnotationTool(QMainWindow):
         self.annotation_history = []  # Track annotation history
         self.annotation_redo_history = []  # Track annotation redo history
         self.temp_selection = None  # Store selection state at start of brush stroke
+        self.show_annotated = True  # Add a class variable to track visibility state
         
         # Setup UI
         self.setup_ui()
@@ -192,6 +193,12 @@ class CellAnnotationTool(QMainWindow):
         self.redo_annotation_btn = QPushButton("Redo Last Annotation")
         self.redo_annotation_btn.clicked.connect(self.redo_last_annotation)
         control_layout.addWidget(self.redo_annotation_btn)
+
+        # Add "Hide Annotated Cells" button after the save button
+        self.hide_annotated_btn = QPushButton("Hide Annotated Cells")
+        self.hide_annotated_btn.setCheckable(True)  # Make it toggleable
+        self.hide_annotated_btn.clicked.connect(self.toggle_annotated_visibility)
+        control_layout.addWidget(self.hide_annotated_btn)
         
         # Save all annotations button
         self.save_btn = QPushButton("Save All Annotations")
@@ -595,18 +602,20 @@ class CellAnnotationTool(QMainWindow):
                 for spine in self.ax.spines.values():
                     spine.set_color('black')
             
-            # Plot annotations
-            for new_type, indices in self.annotations.items():
-                if indices:
-                    idx_array = np.array(list(indices))
-                    scatter = self.ax.scatter(
-                        self.coords[idx_array, 0],
-                        self.coords[idx_array, 1],
-                        label=f"New: {new_type}",
-                        alpha=1.0,
-                        s=self.point_size
-                    )
-                    self.scatter_artists[new_type] = scatter
+            # Modify the annotation plotting section to respect visibility toggle
+            if self.show_annotated:
+                # Plot annotations as before
+                for new_type, indices in self.annotations.items():
+                    if indices:
+                        idx_array = np.array(list(indices))
+                        scatter = self.ax.scatter(
+                            self.coords[idx_array, 0],
+                            self.coords[idx_array, 1],
+                            label=f"New: {new_type}",
+                            alpha=1.0,
+                            s=self.point_size
+                        )
+                        self.scatter_artists[new_type] = scatter
             
             # Plot selected points
             if self.selected_points:
@@ -691,13 +700,24 @@ class CellAnnotationTool(QMainWindow):
             elif self.selection_combo.currentText() in ["Brush (E)", "Eraser (R)"]:
                 # Store initial state when starting a brush stroke
                 self.temp_selection = self.selected_points.copy()
-                # Add/remove initial points under brush
+                # Add/remove initial points under brush (respecting visibility)
                 brush_points = self.get_points_in_brush(event.xdata, event.ydata)
                 if brush_points:
                     if self.selection_combo.currentText() == "Eraser (R)":
                         self.selected_points.difference_update(brush_points)
                     else:
                         self.selected_points.update(brush_points)
+                    self.plot_data()
+            elif self.selection_combo.currentText() == "Single (W)":
+                # For single selection, only select from visible points
+                distances = np.sqrt(np.sum((self.coords - [event.xdata, event.ydata])**2, axis=1))
+                if not self.show_annotated:
+                    # Mask out annotated points
+                    annotated_points = set().union(*self.annotations.values()) if self.annotations else set()
+                    distances[list(annotated_points)] = np.inf
+                closest_point = np.argmin(distances)
+                if distances[closest_point] != np.inf:  # Only select if a valid point was found
+                    self.selected_points.add(closest_point)
                     self.plot_data()
         elif event.button == 3 and event.inaxes == self.ax:  # Right click
             self.is_panning = True
@@ -754,19 +774,34 @@ class CellAnnotationTool(QMainWindow):
             if selection_mode == "Single (W)":
                 previous_selection = self.selected_points.copy()
                 distances = np.sqrt(np.sum((self.coords - [event.xdata, event.ydata])**2, axis=1))
-                closest_point = np.argmin(distances)
-                self.selected_points.add(closest_point)
                 
-                # Add to history if selection changed
-                if previous_selection != self.selected_points:
-                    self.selection_history.append(previous_selection)
-                    self.redo_history.clear()
+                # Filter out annotated points if they're hidden
+                if not self.show_annotated:
+                    annotated_points = set().union(*self.annotations.values()) if self.annotations else set()
+                    distances[list(annotated_points)] = np.inf
+                
+                closest_point = np.argmin(distances)
+                if distances[closest_point] != np.inf:  # Only select if a valid point was found
+                    self.selected_points.add(closest_point)
+                    
+                    # Add to history if selection changed
+                    if previous_selection != self.selected_points:
+                        self.selection_history.append(previous_selection)
+                        self.redo_history.clear()
                     
             elif selection_mode == "Lasso (Q)" and self.drawing_path:
                 previous_selection = self.selected_points.copy()
                 path = Path(self.drawing_path)
                 selected = path.contains_points(self.coords)
-                self.selected_points.update(np.where(selected)[0])
+                
+                # Filter out annotated points if they're hidden
+                if not self.show_annotated:
+                    annotated_points = set().union(*self.annotations.values()) if self.annotations else set()
+                    selected_indices = set(np.where(selected)[0]) - annotated_points
+                else:
+                    selected_indices = set(np.where(selected)[0])
+                
+                self.selected_points.update(selected_indices)
                 
                 # Add to history if selection changed
                 if previous_selection != self.selected_points:
@@ -953,13 +988,20 @@ class CellAnnotationTool(QMainWindow):
         xlim = self.ax.get_xlim()
         ylim = self.ax.get_ylim()
         
-        # Scale brush size relative to the view extent (e.g. 1% of the view range)
+        # Scale brush size relative to the view extent
         view_range = min(xlim[1] - xlim[0], ylim[1] - ylim[0])
         scaled_brush_size = (self.brush_size_slider.value() / 100.0) * view_range
         
-        # Calculate distances and return points within brush radius
+        # Calculate distances
         distances = np.sqrt(np.sum((self.coords - [x, y])**2, axis=1))
-        return set(np.where(distances <= scaled_brush_size)[0])
+        points_in_range = set(np.where(distances <= scaled_brush_size)[0])
+        
+        # If annotated cells are hidden, remove them from selectable points
+        if not self.show_annotated:
+            annotated_points = set().union(*self.annotations.values()) if self.annotations else set()
+            points_in_range = points_in_range - annotated_points
+        
+        return points_in_range
 
     def draw_brush_preview(self, x, y):
         """Draw brush preview circle"""
@@ -1046,6 +1088,14 @@ class CellAnnotationTool(QMainWindow):
         self.green_combo.setCurrentText("None")
         self.blue_combo.setCurrentText("None")
         self.check_and_update_plot()
+
+    def toggle_annotated_visibility(self):
+        """Toggle visibility of annotated cells"""
+        self.show_annotated = not self.show_annotated
+        self.hide_annotated_btn.setText(
+            "Show Annotated Cells" if not self.show_annotated else "Hide Annotated Cells"
+        )
+        self.plot_data()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
