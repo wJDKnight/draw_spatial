@@ -154,7 +154,7 @@ class CellAnnotationTool(QMainWindow):
         self.confirm_btn.setToolTip("Confirm Selection")
         # Get the height of the input field and set button size to 1.2x that height
         input_height = self.new_type_input.sizeHint().height()
-        button_size = int(input_height * 1.4)
+        button_size = int(input_height * 1.2)
         self.confirm_btn.setFixedSize(button_size, button_size)
         # Set the icon size to match the button size
         self.confirm_btn.setIconSize(QSize(button_size, button_size))
@@ -199,6 +199,15 @@ class CellAnnotationTool(QMainWindow):
         self.hide_annotated_btn.setCheckable(True)  # Make it toggleable
         self.hide_annotated_btn.clicked.connect(self.toggle_annotated_visibility)
         control_layout.addWidget(self.hide_annotated_btn)
+        
+        # Add save/load annotation state buttons after the save annotations button
+        self.save_state_btn = QPushButton("Save Annotation State")
+        self.save_state_btn.clicked.connect(self.save_annotation_state)
+        control_layout.addWidget(self.save_state_btn)
+        
+        self.load_state_btn = QPushButton("Load Annotation State") 
+        self.load_state_btn.clicked.connect(self.load_annotation_state)
+        control_layout.addWidget(self.load_state_btn)
         
         # Save all annotations button
         self.save_btn = QPushButton("Save All Annotations")
@@ -274,7 +283,7 @@ class CellAnnotationTool(QMainWindow):
         clear_rgb_btn.setIcon(QIcon("icons/clear.png"))
         clear_rgb_btn.setToolTip("Clear RGB Variables")
         # Set button size similar to confirm button
-        button_size = int(self.new_type_input.sizeHint().height() * 1.4)
+        button_size = int(self.new_type_input.sizeHint().height() * 1.2)
         clear_rgb_btn.setFixedSize(button_size, button_size)
         clear_rgb_btn.setIconSize(QSize(button_size, button_size))
         clear_rgb_btn.clicked.connect(self.clear_rgb_variables)
@@ -1096,6 +1105,79 @@ class CellAnnotationTool(QMainWindow):
             "Show Annotated Cells" if not self.show_annotated else "Hide Annotated Cells"
         )
         self.plot_data()
+
+    def save_annotation_state(self):
+        """Save current annotation state to a CSV file"""
+        if self.data is None:
+            return
+            
+        file_name, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Annotation State",
+            "",
+            "CSV Files (*.csv)"
+        )
+        
+        if file_name:
+            try:
+                # Create a DataFrame with cell indices and their annotations
+                state_data = []
+                for annotation_type, indices in self.annotations.items():
+                    for idx in indices:
+                        state_data.append({
+                            'cell_index': idx,
+                            'annotation': annotation_type
+                        })
+                
+                if state_data:
+                    state_df = pd.DataFrame(state_data)
+                    state_df.to_csv(file_name, index=False)
+                    print(f"Annotation state saved to {file_name}")
+                else:
+                    print("No annotations to save")
+                    
+            except Exception as e:
+                print(f"Error saving annotation state: {e}")
+
+    def load_annotation_state(self):
+        """Load annotation state from a CSV file"""
+        if self.data is None:
+            return
+            
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Annotation State",
+            "",
+            "CSV Files (*.csv)"
+        )
+        
+        if file_name:
+            try:
+                # Load the state file
+                state_df = pd.read_csv(file_name)
+                
+                # Clear current annotations
+                self.annotations = {}
+                
+                # Rebuild annotations dictionary
+                for _, row in state_df.iterrows():
+                    annotation_type = row['annotation']
+                    cell_index = int(row['cell_index'])
+                    
+                    # Initialize the set if this is a new annotation type
+                    if annotation_type not in self.annotations:
+                        self.annotations[annotation_type] = set()
+                    
+                    # Add the cell index to the appropriate set
+                    self.annotations[annotation_type].add(cell_index)
+                
+                # Update the display
+                self.plot_data()
+                self.update_annotation_display()
+                print(f"Annotation state loaded from {file_name}")
+                
+            except Exception as e:
+                print(f"Error loading annotation state: {e}")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
