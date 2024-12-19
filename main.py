@@ -388,28 +388,43 @@ class CellAnnotationTool(QMainWindow):
         return None
 
     def load_data(self):
+        print("Starting data load...")
         file_name, _ = QFileDialog.getOpenFileName(self, "Open CSV File", "", "CSV Files (*.csv)")
         if file_name:
+            print(f"Loading file: {file_name}")
+            
             # Load data efficiently
+            print("Reading CSV...")
             self.data = pd.read_csv(file_name)
+            print(f"Loaded {len(self.data)} rows")
+            
+            print("Clearing existing data structures...")
             self.annotations = {}
             self.selected_points.clear()
             
-            # Update all column selectors
+            print("Updating column selectors...")
+            self.x_combo.blockSignals(True)
+            self.y_combo.blockSignals(True)
+            self.cell_type_combo.blockSignals(True)
+
             self.x_combo.clear()
             self.y_combo.clear()
             self.cell_type_combo.clear()
-            
+
             all_columns = self.data.columns
+            print(f"Found {len(all_columns)} columns")
             self.x_combo.addItems(all_columns)
             self.y_combo.addItems(all_columns)
             self.cell_type_combo.addItems(all_columns)
+
             
-            # Auto-detect columns
+            
+            print("Auto-detecting columns...")
             x_col, y_col = self.detect_coordinate_columns(self.data)
             cell_type_col = self.detect_cell_type_column(self.data)
+            print(f"Detected columns - X: {x_col}, Y: {y_col}, Cell Type: {cell_type_col}")
             
-            # Set detected columns in combo boxes
+            print("Setting detected columns...")
             if x_col and y_col:
                 self.x_combo.setCurrentText(x_col)
                 self.y_combo.setCurrentText(y_col)
@@ -417,55 +432,60 @@ class CellAnnotationTool(QMainWindow):
             if cell_type_col:
                 self.cell_type_combo.setCurrentText(cell_type_col)
             
-            # Disconnect previous connections if they exist
+            self.x_combo.blockSignals(False)
+            self.y_combo.blockSignals(False)
+            self.cell_type_combo.blockSignals(False)
+            
+            print("Updating signal connections...")
             try:
                 self.x_combo.currentTextChanged.disconnect()
                 self.y_combo.currentTextChanged.disconnect()
                 self.cell_type_combo.currentTextChanged.disconnect()
             except:
-                pass
+                print("No existing connections to disconnect")
             
-            # Connect column change events
             self.x_combo.currentTextChanged.connect(self.check_and_update_plot)
             self.y_combo.currentTextChanged.connect(self.check_and_update_plot)
             self.cell_type_combo.currentTextChanged.connect(self.check_and_update_plot)
             
-            # Clear the plot
+            print("Clearing plot...")
             self.ax.clear()
             self.canvas.draw()
             
-            # Automatically update plot if all columns were detected
+            print("Checking for automatic plot update...")
             if x_col and y_col and cell_type_col:
+                print("Updating plot with detected columns...")
                 self.update_plot()
             
-            # Update continuous variable selectors
+            print("Updating continuous variable selectors...")
             numeric_columns = self.data.select_dtypes(include=[np.number]).columns
+            print(f"Found {len(numeric_columns)} numeric columns")
             for combo in [self.red_combo, self.green_combo, self.blue_combo]:
                 combo.clear()
                 combo.addItem("None")
                 combo.addItems(numeric_columns)
                 
-                # Disconnect any existing connections
                 try:
                     combo.lineEdit().textChanged.disconnect()
                     combo.currentTextChanged.disconnect()
                 except:
                     pass
                 
-                # Only connect activated signal (triggered by dropdown selection or Enter)
                 combo.activated.connect(self.check_and_update_plot)
             
-            # Connect selection change events
+            print("Updating RGB connections...")
             try:
                 self.red_combo.currentTextChanged.disconnect()
                 self.green_combo.currentTextChanged.disconnect()
                 self.blue_combo.currentTextChanged.disconnect()
             except:
-                pass
+                print("No existing RGB connections to disconnect")
             
             self.red_combo.currentTextChanged.connect(self.check_and_update_plot)
             self.green_combo.currentTextChanged.connect(self.check_and_update_plot)
             self.blue_combo.currentTextChanged.connect(self.check_and_update_plot)
+            
+            print("Data loading complete!")
     
     def check_and_update_plot(self):
         """Only update plot if coordinates are selected"""
@@ -474,42 +494,52 @@ class CellAnnotationTool(QMainWindow):
             self.update_plot()
     
     def update_plot(self):
+        print("Starting plot update...")
         if not all([self.x_combo.currentText(), self.y_combo.currentText(), self.cell_type_combo.currentText()]):
+            print("Missing required columns, skipping plot update")
             return
-            
+        
         self.x_column = self.x_combo.currentText()
         self.y_column = self.y_combo.currentText()
         self.cell_type_column = self.cell_type_combo.currentText()
         
-        # Store coordinates in NumPy array for faster access
+        print("Storing coordinates...")
         self.coords = np.column_stack((
             self.data[self.x_column].values,
             self.data[self.y_column].values
         ))
         
+        print("Calling plot_data...")
         self.plot_data()
+        print("Plot update complete!")
     
     def plot_data(self):
+        print("Starting plot_data...")
         if self.data is None or not all([self.x_column, self.y_column]):
+            print("Missing required data, skipping plot")
             return
         
         try:
+            print("Setting up plot...")
             # Store current view limits before clearing
             try:
                 current_xlim = self.ax.get_xlim()
                 current_ylim = self.ax.get_ylim()
                 had_previous_view = True
+                print("Stored previous view limits")
             except:
                 had_previous_view = False
+                print("No previous view limits")
             
-            # Clear the plot
+            print("Clearing plot...")
             self.ax.clear()
             self.scatter_artists.clear()
             
-            # Check for RGB coloring
+            print("Checking RGB colors...")
             rgb_colors = self.get_rgb_colors()
             
             if rgb_colors is not None:
+                print("Plotting with RGB colors...")
                 # Set dark grey background for RGB mode
                 self.ax.set_facecolor('#333333')
                 self.figure.set_facecolor('#333333')
@@ -532,6 +562,7 @@ class CellAnnotationTool(QMainWindow):
                 for spine in self.ax.spines.values():
                     spine.set_color('white')
             else:
+                print("Plotting with categorical colors...")
                 # Reset to default white background for categorical coloring
                 self.ax.set_facecolor('white')
                 self.figure.set_facecolor('white')
@@ -610,9 +641,10 @@ class CellAnnotationTool(QMainWindow):
                 self.ax.set_xlim(current_xlim)
                 self.ax.set_ylim(current_ylim)
             
-            # Draw the plot
+            print("Drawing plot...")
             self.canvas.draw()
             self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+            print("Plot_data complete!")
             
         except Exception as e:
             print(f"Error in plot_data: {e}")
