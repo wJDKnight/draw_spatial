@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QHBoxLayout, QPushButton, QFileDialog, QLabel, 
                            QComboBox, QLineEdit, QSlider)
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QKeySequence
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.path import Path
@@ -42,6 +43,7 @@ class CellAnnotationTool(QMainWindow):
         self.redo_history = []  # Track redo history
         self.annotation_history = []  # Track annotation history
         self.annotation_redo_history = []  # Track annotation redo history
+        self.temp_selection = None  # Store selection state at start of brush stroke
         
         # Setup UI
         self.setup_ui()
@@ -100,12 +102,42 @@ class CellAnnotationTool(QMainWindow):
         # Selection mode
         self.selection_label = QLabel("Selection Mode:")
         control_layout.addWidget(self.selection_label)
+        
         self.selection_combo = QComboBox()
-        self.selection_combo.addItems([ "Lasso", "Single"])
+        self.selection_combo.addItems([
+            "Lasso (Q)", 
+            "Single (W)", 
+            "Brush (E)", 
+            "Eraser (R)"
+        ])
         control_layout.addWidget(self.selection_combo)
         
-        # New cell type input
-        self.new_type_label = QLabel("New Cell Type Name:")
+        # Add brush size control (initially hidden)
+        self.brush_size_layout = QHBoxLayout()
+        self.brush_size_label = QLabel("Brush Size:")
+        self.brush_size_layout.addWidget(self.brush_size_label)
+        self.brush_size_slider = QSlider(Qt.Horizontal)
+        self.brush_size_slider.setMinimum(1)  # 1% of view range
+        self.brush_size_slider.setMaximum(50)  # 50% of view range
+        self.brush_size_slider.setValue(5)  # Default to 5% of view range
+        self.brush_size_layout.addWidget(self.brush_size_slider)
+        self.brush_size_value_label = QLabel("5%")
+        self.brush_size_layout.addWidget(self.brush_size_value_label)
+        control_layout.addLayout(self.brush_size_layout)
+        
+        # Connect brush size slider
+        self.brush_size_slider.valueChanged.connect(self.update_brush_size)
+        
+        # Hide brush size controls initially
+        self.brush_size_label.setVisible(False)
+        self.brush_size_slider.setVisible(False)
+        self.brush_size_value_label.setVisible(False)
+        
+        # Connect selection mode change
+        self.selection_combo.currentTextChanged.connect(self.on_selection_mode_changed)
+        
+        # New annotation name input
+        self.new_type_label = QLabel("New Annotation Name:")
         control_layout.addWidget(self.new_type_label)
         self.new_type_input = QLineEdit()
         control_layout.addWidget(self.new_type_input)
@@ -115,27 +147,27 @@ class CellAnnotationTool(QMainWindow):
         self.confirm_btn.clicked.connect(self.confirm_selection)
         control_layout.addWidget(self.confirm_btn)
         
-        # Remove annotation button
-        self.remove_annotation_btn = QPushButton("Remove Annotation from Selection")
-        self.remove_annotation_btn.clicked.connect(self.remove_annotation)
-        control_layout.addWidget(self.remove_annotation_btn)
-        
         # Clear current selection button
         self.clear_btn = QPushButton("Clear Current Selection")
         self.clear_btn.clicked.connect(self.clear_selection)
         control_layout.addWidget(self.clear_btn)
         
         # Add "Undo Last Selection" button after the Clear Selection button
-        self.undo_selection_btn = QPushButton("Undo Last Selection")
+        self.undo_selection_btn = QPushButton("Undo Last Selection (D)")
         self.undo_selection_btn.clicked.connect(self.undo_last_selection)
         control_layout.addWidget(self.undo_selection_btn)
         
         # Add "Redo Last Selection" button after the Undo button
-        self.redo_selection_btn = QPushButton("Redo Last Selection")
+        self.redo_selection_btn = QPushButton("Redo Last Selection (F)")
         self.redo_selection_btn.clicked.connect(self.redo_last_selection)
         control_layout.addWidget(self.redo_selection_btn)
         
-        # Add annotation undo/redo buttons after the regular undo/redo buttons
+        # Remove annotation button (moved here)
+        self.remove_annotation_btn = QPushButton("Remove Annotation from Selection")
+        self.remove_annotation_btn.clicked.connect(self.remove_annotation)
+        control_layout.addWidget(self.remove_annotation_btn)
+        
+        # Add annotation undo/redo buttons
         self.undo_annotation_btn = QPushButton("Undo Last Annotation")
         self.undo_annotation_btn.clicked.connect(self.undo_last_annotation)
         control_layout.addWidget(self.undo_annotation_btn)
@@ -148,11 +180,6 @@ class CellAnnotationTool(QMainWindow):
         self.save_btn = QPushButton("Save All Annotations")
         self.save_btn.clicked.connect(self.save_annotations)
         control_layout.addWidget(self.save_btn)
-        
-        # Add Refresh View button
-        self.refresh_view_btn = QPushButton("Refresh View")
-        self.refresh_view_btn.clicked.connect(self.refresh_view)
-        control_layout.addWidget(self.refresh_view_btn)
         
         # Add spacer
         control_layout.addStretch()
@@ -192,7 +219,24 @@ class CellAnnotationTool(QMainWindow):
         y_layout.addWidget(self.y_combo)
         coord_layout.addLayout(y_layout)
         
+        # Add Refresh View button right after Y Column
+        self.refresh_view_btn = QPushButton("Refresh View")
+        self.refresh_view_btn.clicked.connect(self.refresh_view)
+        coord_layout.addWidget(self.refresh_view_btn)
+        
         control_layout.insertLayout(1, coord_layout)  # Insert after load button
+        
+        # After setting up the canvas, add key press event connection
+        self.canvas.setFocusPolicy(Qt.StrongFocus)  # Make canvas focusable
+        self.canvas.mpl_connect('key_press_event', self.on_key_press)
+        
+        # Add tooltips to show shortcuts
+        self.selection_combo.setToolTip("Shortcuts: Q (Lasso), W (Single), E (Brush), R (Eraser)")
+        
+        # Update brush size control tooltip
+        self.brush_size_label.setToolTip("Use + and - keys to adjust size")
+        self.brush_size_slider.setToolTip("Use + and - keys to adjust size")
+        self.brush_size_value_label.setToolTip("Use + and - keys to adjust size")
         
     def detect_coordinate_columns(self, df):
         """
@@ -372,7 +416,7 @@ class CellAnnotationTool(QMainWindow):
                     self.coords[mask, 0],
                     self.coords[mask, 1],
                     c=[color_dict[cell_type]],
-                    label=f"Original: {cell_type}",
+                    label=f"{cell_type}",
                     alpha=self.point_alpha,  # Use the transparency value
                     s=self.point_size
                 )
@@ -461,7 +505,19 @@ class CellAnnotationTool(QMainWindow):
     def on_mouse_press(self, event):
         if event.button == 1 and event.inaxes == self.ax:  # Left click
             self.is_selecting = True
-            self.drawing_path = [(event.xdata, event.ydata)]
+            if self.selection_combo.currentText() == "Lasso (Q)":
+                self.drawing_path = [(event.xdata, event.ydata)]
+            elif self.selection_combo.currentText() in ["Brush (E)", "Eraser (R)"]:
+                # Store initial state when starting a brush stroke
+                self.temp_selection = self.selected_points.copy()
+                # Add/remove initial points under brush
+                brush_points = self.get_points_in_brush(event.xdata, event.ydata)
+                if brush_points:
+                    if self.selection_combo.currentText() == "Eraser (R)":
+                        self.selected_points.difference_update(brush_points)
+                    else:
+                        self.selected_points.update(brush_points)
+                    self.plot_data()
         elif event.button == 3 and event.inaxes == self.ax:  # Right click
             self.is_panning = True
             self.pan_start = (event.xdata, event.ydata)
@@ -472,7 +528,7 @@ class CellAnnotationTool(QMainWindow):
             return
             
         if self.is_selecting:
-            if self.selection_combo.currentText() == "Lasso":
+            if self.selection_combo.currentText() == "Lasso (Q)":
                 self.drawing_path.append((event.xdata, event.ydata))
                 if self.background is not None:
                     self.canvas.restore_region(self.background)
@@ -482,6 +538,17 @@ class CellAnnotationTool(QMainWindow):
                     self.ax.draw_artist(patch)
                     self.canvas.blit(self.ax.bbox)
                     patch.remove()
+            elif self.selection_combo.currentText() in ["Brush (E)", "Eraser (R)"]:
+                # Add or remove points under brush without adding to history
+                brush_points = self.get_points_in_brush(event.xdata, event.ydata)
+                if brush_points:
+                    if self.selection_combo.currentText() == "Eraser (R)":
+                        self.selected_points.difference_update(brush_points)
+                    else:
+                        self.selected_points.update(brush_points)
+                    self.plot_data()
+                # Draw brush preview
+                self.draw_brush_preview(event.xdata, event.ydata)
         elif self.is_panning and event.xdata and event.ydata:
             dx = event.xdata - self.pan_start[0]
             dy = event.ydata - self.pan_start[1]
@@ -492,27 +559,45 @@ class CellAnnotationTool(QMainWindow):
             self.ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
             self.ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
             self.canvas.draw()
-            # Update background after panning
             self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+        elif self.selection_combo.currentText() in ["Brush (E)", "Eraser (R)"] and event.inaxes:
+            # Show brush preview while moving
+            self.draw_brush_preview(event.xdata, event.ydata)
     
     def on_mouse_release(self, event):
         if event.button == 1:  # Left click release
             self.is_selecting = False
-            previous_selection = self.selected_points.copy()  # Store previous state
             
-            if self.selection_combo.currentText() == "Single":
+            selection_mode = self.selection_combo.currentText()
+            
+            if selection_mode == "Single (W)":
+                previous_selection = self.selected_points.copy()
                 distances = np.sqrt(np.sum((self.coords - [event.xdata, event.ydata])**2, axis=1))
                 closest_point = np.argmin(distances)
                 self.selected_points.add(closest_point)
-            else:
+                
+                # Add to history if selection changed
+                if previous_selection != self.selected_points:
+                    self.selection_history.append(previous_selection)
+                    self.redo_history.clear()
+                    
+            elif selection_mode == "Lasso (Q)" and self.drawing_path:
+                previous_selection = self.selected_points.copy()
                 path = Path(self.drawing_path)
                 selected = path.contains_points(self.coords)
                 self.selected_points.update(np.where(selected)[0])
-            
-            # Only add to history if selection changed
-            if previous_selection != self.selected_points:
-                self.selection_history.append(previous_selection)
-                self.redo_history.clear()  # Clear redo history on new selection
+                
+                # Add to history if selection changed
+                if previous_selection != self.selected_points:
+                    self.selection_history.append(previous_selection)
+                    self.redo_history.clear()
+                    
+            elif selection_mode in ["Brush (E)", "Eraser (R)"]:
+                # Add to history if the brush stroke changed the selection
+                if self.temp_selection != self.selected_points:
+                    self.selection_history.append(self.temp_selection)
+                    self.redo_history.clear()
+                self.temp_selection = None
             
             self.plot_data()
             self.drawing_path = []
@@ -632,7 +717,8 @@ class CellAnnotationTool(QMainWindow):
     
     def undo_last_selection(self):
         """Undo the last selection action"""
-        if self.selection_history:
+        # Only proceed if canvas has focus and there's history to undo
+        if self.canvas.hasFocus() and self.selection_history:
             current_selection = self.selected_points.copy()
             self.selected_points = self.selection_history.pop()
             self.redo_history.append(current_selection)
@@ -640,7 +726,8 @@ class CellAnnotationTool(QMainWindow):
 
     def redo_last_selection(self):
         """Redo the last undone selection action"""
-        if self.redo_history:
+        # Only proceed if canvas has focus and there's history to redo
+        if self.canvas.hasFocus() and self.redo_history:
             current_selection = self.selected_points.copy()
             self.selected_points = self.redo_history.pop()
             self.selection_history.append(current_selection)
@@ -663,6 +750,84 @@ class CellAnnotationTool(QMainWindow):
             self.annotations = self.annotation_redo_history.pop()
             self.plot_data()
             self.update_annotation_display()
+
+    def update_brush_size(self, value):
+        """Update the brush size value"""
+        self.brush_size_value_label.setText(str(value))
+
+    def on_selection_mode_changed(self, mode):
+        """Handle selection mode changes"""
+        # Show/hide brush size controls based on mode
+        is_brush_mode = mode in ["Brush (E)", "Eraser (R)"]
+        self.brush_size_label.setVisible(is_brush_mode)
+        self.brush_size_slider.setVisible(is_brush_mode)
+        self.brush_size_value_label.setVisible(is_brush_mode)
+
+    def get_points_in_brush(self, x, y):
+        """Get points within brush radius"""
+        if self.coords is None:
+            return set()
+        
+        # Get the current view limits to scale the brush size appropriately
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+        
+        # Scale brush size relative to the view extent (e.g. 1% of the view range)
+        view_range = min(xlim[1] - xlim[0], ylim[1] - ylim[0])
+        scaled_brush_size = (self.brush_size_slider.value() / 100.0) * view_range
+        
+        # Calculate distances and return points within brush radius
+        distances = np.sqrt(np.sum((self.coords - [x, y])**2, axis=1))
+        return set(np.where(distances <= scaled_brush_size)[0])
+
+    def draw_brush_preview(self, x, y):
+        """Draw brush preview circle"""
+        if self.background is not None and x is not None and y is not None:
+            self.canvas.restore_region(self.background)
+            
+            # Scale brush size same as in get_points_in_brush
+            xlim = self.ax.get_xlim()
+            ylim = self.ax.get_ylim()
+            view_range = min(xlim[1] - xlim[0], ylim[1] - ylim[0])
+            scaled_brush_size = (self.brush_size_slider.value() / 100.0) * view_range
+            
+            # Use red for brush mode, blue for eraser mode
+            color = 'blue' if self.selection_combo.currentText() == "Eraser (R)" else 'red'
+            circle = plt.Circle((x, y), scaled_brush_size, fill=False, color=color)
+            self.ax.add_patch(circle)
+            self.ax.draw_artist(circle)
+            self.canvas.blit(self.ax.bbox)
+            circle.remove()
+
+    def on_key_press(self, event):
+        """Handle keyboard shortcuts"""
+        if not self.canvas.hasFocus():
+            return
+        
+        if event.key == 'd':  # Undo last selection
+            self.undo_last_selection()
+        elif event.key == 'f':  # Redo last selection
+            self.redo_last_selection()
+        # Add selection mode shortcuts
+        elif event.key == 'q':  # Lasso selection
+            self.selection_combo.setCurrentText("Lasso (Q)")
+        elif event.key == 'w':  # Single selection
+            self.selection_combo.setCurrentText("Single (W)")
+        elif event.key == 'e':  # Brush selection
+            self.selection_combo.setCurrentText("Brush (E)")
+        elif event.key == 'r':  # Eraser
+            self.selection_combo.setCurrentText("Eraser (R)")
+        # Add brush size shortcuts
+        elif event.key in ['+', '=']:  # Increase brush size (both + and = keys work)
+            if self.selection_combo.currentText() in ["Brush (E)", "Eraser (R)"]:
+                current_size = self.brush_size_slider.value()
+                new_size = min(current_size + 1, self.brush_size_slider.maximum())
+                self.brush_size_slider.setValue(new_size)
+        elif event.key == '-':  # Decrease brush size
+            if self.selection_combo.currentText() in ["Brush (E)", "Eraser (R)"]:
+                current_size = self.brush_size_slider.value()
+                new_size = max(current_size - 1, self.brush_size_slider.minimum())
+                self.brush_size_slider.setValue(new_size)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
