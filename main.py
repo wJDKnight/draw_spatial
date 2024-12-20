@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                            QHBoxLayout, QPushButton, QFileDialog, QLabel, 
-                           QComboBox, QLineEdit, QSlider, QCompleter)
+                           QComboBox, QLineEdit, QSlider, QCompleter, QScrollArea, QSizePolicy)
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QKeySequence, QIcon
 import matplotlib.pyplot as plt
@@ -59,14 +59,17 @@ class CellAnnotationTool(QMainWindow):
         # Create matplotlib figure with adjusted size for legend
         self.figure, self.ax = plt.subplots(figsize=(10, 8))
         # Add space for the legend on the right
-        self.figure.subplots_adjust(right=0.85)
+        self.figure.subplots_adjust(right=0.8)
         self.canvas = FigureCanvas(self.figure)
         layout.addWidget(self.canvas, stretch=4)
         
         # Create control panel
         control_panel = QWidget()
         control_layout = QVBoxLayout(control_panel)
-        layout.addWidget(control_panel, stretch=1)
+        
+        # Set fixed width and vertical resize for control panel
+        control_panel.setFixedWidth(250)
+        control_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         
         # Add buttons
         self.load_btn = QPushButton("Load Data")
@@ -276,7 +279,7 @@ class CellAnnotationTool(QMainWindow):
         
         # Create horizontal layout for label and clear button
         continuous_header = QHBoxLayout()
-        continuous_header.addWidget(QLabel("Color by Continuous Variables (RGB):"))
+        continuous_header.addWidget(QLabel("Color by Continuous Variables:"))
         
         # Add clear button with icon
         clear_rgb_btn = QPushButton()
@@ -331,6 +334,17 @@ class CellAnnotationTool(QMainWindow):
         continuous_layout.addLayout(blue_layout)
         
         control_layout.insertLayout(2, continuous_layout)
+        
+        # Create a scroll area and set its widget to the control panel
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)  # Allow the widget to resize with the scroll area
+        scroll_area.setWidget(control_panel)
+        
+        # Set fixed width and vertical resize for scroll area
+        scroll_area.setFixedWidth(270)
+        scroll_area.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        
+        layout.addWidget(scroll_area, stretch=1)
     
     def detect_coordinate_columns(self, df):
         """
