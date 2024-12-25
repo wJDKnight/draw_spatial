@@ -7,7 +7,8 @@ matplotlib.use('Qt5Agg')  # Set the backend before importing pyplot
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QHBoxLayout, QPushButton, QFileDialog, QLabel,
-                           QComboBox, QLineEdit, QSlider, QCompleter, QScrollArea, QSizePolicy)
+                           QComboBox, QLineEdit, QSlider, QCompleter, QScrollArea, QSizePolicy,
+                           QMenuBar, QMenu, QAction)
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QKeySequence, QIcon
 
@@ -15,6 +16,7 @@ from .data_operations import DataOperations
 from .plotting_operations import PlottingOperations
 from .selection_operations import SelectionOperations
 from .shortcuts_handler import ShortcutsHandler
+from .analysis_window import AnalysisWindow
 
 class CellAnnotationTool(QMainWindow):
     def __init__(self):
@@ -44,6 +46,7 @@ class CellAnnotationTool(QMainWindow):
         self.annotation_redo_history = []  # Track annotation redo history
         self.temp_selection = None  # Store selection state at start of brush stroke
         self.show_annotated = True  # Add a class variable to track visibility state
+        self.analysis_window = None  # Store reference to analysis window
 
         # Initialize helper classes
         self.data_ops = DataOperations(self)
@@ -51,8 +54,129 @@ class CellAnnotationTool(QMainWindow):
         self.select_ops = SelectionOperations(self)
         self.shortcuts = ShortcutsHandler(self)
 
+        # Create menu bar
+        self.create_menu_bar()
+
+
         # Setup UI
         self.setup_ui()
+
+    def create_menu_bar(self):
+        menubar = self.menuBar()
+
+        # File Menu
+        file_menu = menubar.addMenu('&File')
+        
+        load_data_action = QAction('&Load Data', self)
+        load_data_action.setShortcut('Ctrl+O')
+        load_data_action.triggered.connect(self.data_ops.load_data)
+        file_menu.addAction(load_data_action)
+
+        save_annotations_action = QAction('&Save All Annotations', self)
+        save_annotations_action.setShortcut('Ctrl+S')
+        save_annotations_action.triggered.connect(self.data_ops.save_annotations)
+        file_menu.addAction(save_annotations_action)
+
+        save_state_action = QAction('Save Annotation &State', self)
+        save_state_action.setShortcut('Ctrl+Shift+S')
+        save_state_action.triggered.connect(self.data_ops.save_annotation_state)
+        file_menu.addAction(save_state_action)
+
+        load_state_action = QAction('&Load Annotation State', self)
+        load_state_action.setShortcut('Ctrl+Shift+O')
+        load_state_action.triggered.connect(self.data_ops.load_annotation_state)
+        file_menu.addAction(load_state_action)
+
+        # Edit Menu
+        edit_menu = menubar.addMenu('&Edit')
+
+        undo_selection_action = QAction('&Undo Last Selection', self)
+        undo_selection_action.setShortcut('D')
+        undo_selection_action.triggered.connect(self.select_ops.undo_last_selection)
+        edit_menu.addAction(undo_selection_action)
+
+        redo_selection_action = QAction('&Redo Last Selection', self)
+        redo_selection_action.setShortcut('F')
+        redo_selection_action.triggered.connect(self.select_ops.redo_last_selection)
+        edit_menu.addAction(redo_selection_action)
+
+        edit_menu.addSeparator()
+
+        undo_annotation_action = QAction('Undo Last &Annotation', self)
+        undo_annotation_action.setShortcut('Ctrl+Z')
+        undo_annotation_action.triggered.connect(self.select_ops.undo_last_annotation)
+        edit_menu.addAction(undo_annotation_action)
+
+        redo_annotation_action = QAction('Redo Last A&nnotation', self)
+        redo_annotation_action.setShortcut('Ctrl+Y')
+        redo_annotation_action.triggered.connect(self.select_ops.redo_last_annotation)
+        edit_menu.addAction(redo_annotation_action)
+
+        edit_menu.addSeparator()
+
+        clear_selection_action = QAction('&Clear Current Selection', self)
+        # clear_selection_action.setShortcut('Escape')
+        clear_selection_action.triggered.connect(self.select_ops.clear_selection)
+        edit_menu.addAction(clear_selection_action)
+
+        remove_annotation_action = QAction('&Remove Annotation from Selection', self)
+        # remove_annotation_action.setShortcut('Delete')
+        remove_annotation_action.triggered.connect(self.select_ops.remove_annotation)
+        edit_menu.addAction(remove_annotation_action)
+
+        # View Menu
+        view_menu = menubar.addMenu('&View')
+
+        refresh_view_action = QAction('&Refresh View', self)
+        refresh_view_action.setShortcut('F5')
+        refresh_view_action.triggered.connect(self.plot_ops.refresh_view)
+        view_menu.addAction(refresh_view_action)
+
+        toggle_annotated_action = QAction('&Toggle Annotated Cells', self)
+        toggle_annotated_action.setShortcut('Ctrl+T')
+        toggle_annotated_action.setCheckable(True)
+        toggle_annotated_action.triggered.connect(self.plot_ops.toggle_annotated_visibility)
+        view_menu.addAction(toggle_annotated_action)
+
+        clear_rgb_action = QAction('Clear &RGB Variables', self)
+        clear_rgb_action.setShortcut('Ctrl+R')
+        clear_rgb_action.triggered.connect(self.plot_ops.clear_rgb_variables)
+        view_menu.addAction(clear_rgb_action)
+
+        # Tools Menu
+        tools_menu = menubar.addMenu('&Tools')
+
+        # Selection Mode submenu
+        selection_menu = QMenu('&Selection Mode', self)
+        tools_menu.addMenu(selection_menu)
+
+        lasso_action = QAction('&Lasso', self)
+        lasso_action.setShortcut('Q')
+        lasso_action.triggered.connect(lambda: self.selection_combo.setCurrentText("Lasso (Q)"))
+        selection_menu.addAction(lasso_action)
+
+        single_action = QAction('&Single', self)
+        single_action.setShortcut('W')
+        single_action.triggered.connect(lambda: self.selection_combo.setCurrentText("Single (W)"))
+        selection_menu.addAction(single_action)
+
+        brush_action = QAction('&Brush', self)
+        brush_action.setShortcut('E')
+        brush_action.triggered.connect(lambda: self.selection_combo.setCurrentText("Brush (E)"))
+        selection_menu.addAction(brush_action)
+
+        eraser_action = QAction('&Eraser', self)
+        eraser_action.setShortcut('R')
+        eraser_action.triggered.connect(lambda: self.selection_combo.setCurrentText("Eraser (R)"))
+        selection_menu.addAction(eraser_action)
+
+        # Analysis Menu
+        analysis_menu = menubar.addMenu('&Analysis')
+        
+        open_analysis_action = QAction('&Open Analysis Window', self)
+        open_analysis_action.setShortcut('Ctrl+A')
+        open_analysis_action.triggered.connect(self.show_analysis_window)
+        analysis_menu.addAction(open_analysis_action)
 
     def setup_ui(self):
         # Create central widget and layout
@@ -224,6 +348,11 @@ class CellAnnotationTool(QMainWindow):
         # Add spacer
         control_layout.addStretch()
 
+        # Add analysis button after load button
+        self.analysis_btn = QPushButton("Analysis")
+        self.analysis_btn.clicked.connect(self.show_analysis_window)
+        control_layout.addWidget(self.analysis_btn)
+
         # Current annotations display
         self.annotation_label = QLabel("Current Annotations:")
         control_layout.addWidget(self.annotation_label)
@@ -363,6 +492,12 @@ class CellAnnotationTool(QMainWindow):
         for cell_type, indices in self.annotations.items():
             text.append(f"{cell_type}: {len(indices)} cells")
         self.annotation_display.setText("\n".join(text))
+
+    def show_analysis_window(self):
+        if self.analysis_window is None:
+            self.analysis_window = AnalysisWindow(self)
+        self.analysis_window.show()
+        self.analysis_window.update_proportions_table()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
