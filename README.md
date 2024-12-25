@@ -10,6 +10,9 @@ An interactive GUI tool for manual annotation of cell types in spatial transcrip
   - Adjustable point size and transparency
   - Zoom and pan functionality
   - RGB visualization mode for continuous variables
+  - Show/hide annotated cells
+  - Dynamic point size adjustment
+  - Customizable transparency settings
 
 - **Selection Tools**
   - Single-point selection (W)
@@ -17,12 +20,15 @@ An interactive GUI tool for manual annotation of cell types in spatial transcrip
   - Brush selection (E)
   - Eraser tool (R)
   - Adjustable brush size (+/-)
+  - Undo/Redo functionality (D/F)
 
 - **Annotation Management**
   - Add new cell type annotations
   - Remove annotations
   - Undo/redo support for selections and annotations
   - Export annotated data to CSV
+  - Auto-complete for annotation names
+  - Annotation history tracking
 
 ## Installation
 
@@ -57,6 +63,7 @@ python main.py
    - Press E for brush selection
    - Press R for eraser tool
    - Use +/- to adjust brush size
+   - Use D/F for undo/redo
 
 5. Enter a new annotation name and click confirm to annotate selected cells
 6. Save your annotations using the "Save All Annotations" button
@@ -76,7 +83,7 @@ The input CSV file should contain at least these columns:
 - R: Eraser mode
 - D: Undo last selection
 - F: Redo last selection
-- +/-: Adjust brush size
+- +/-: Adjust brush size (for brush and eraser modes)
 
 ## Output
 
@@ -86,12 +93,17 @@ The tool exports a CSV file containing:
 
 ## Requirements
 
-- Python 3.9
+- Python 3.9+
 - PyQt5
 - pandas
 - matplotlib
 - numpy
 - scikit-learn
+
+## Platform Compatibility
+
+- Tested on macOS (uses 'cocoa' backend)
+- Should work on other platforms with appropriate Qt backend configuration
 
 ## License
 
