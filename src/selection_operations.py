@@ -117,6 +117,7 @@ class SelectionOperations:
             selection_mode = self.main_window.selection_combo.currentText()
 
             if selection_mode == "Single (W)":
+                # Always store the previous state before making a new selection
                 previous_selection = self.main_window.selected_points.copy()
                 distances = np.sqrt(np.sum((self.main_window.coords - [event.xdata, event.ydata])**2, axis=1))
 
@@ -128,11 +129,9 @@ class SelectionOperations:
                 closest_point = np.argmin(distances)
                 if distances[closest_point] != np.inf:  # Only select if a valid point was found
                     self.main_window.selected_points.add(closest_point)
-
-                    # Add to history if selection changed
-                    if previous_selection != self.main_window.selected_points:
-                        self.main_window.selection_history.append(previous_selection)
-                        self.main_window.redo_history.clear()
+                    # Always add to history for Single selection mode
+                    self.main_window.selection_history.append(previous_selection)
+                    self.main_window.redo_history.clear()
 
             elif selection_mode == "Lasso (Q)" and self.main_window.drawing_path:
                 previous_selection = self.main_window.selected_points.copy()
