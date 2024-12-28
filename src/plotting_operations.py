@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from sklearn.preprocessing import MinMaxScaler
+from PyQt5.QtWidgets import QMessageBox
 
 class PlottingOperations:
     def __init__(self, main_window):
@@ -29,6 +30,16 @@ class PlottingOperations:
         self.main_window.x_column = self.main_window.x_combo.currentText()
         self.main_window.y_column = self.main_window.y_combo.currentText()
         self.main_window.cell_type_column = self.main_window.cell_type_combo.currentText()
+
+        # Check number of unique colors before plotting
+        unique_types = np.unique(self.main_window.data[self.main_window.cell_type_column].values)
+        if len(unique_types) > 100:
+            QMessageBox.warning(
+                self.main_window,
+                "Warning",
+                f"The selected column '{self.main_window.cell_type_column}' has {len(unique_types)} unique values, which is too many to plot effectively. Please select a different column or filter your data."
+            )
+            return
 
         print("Storing coordinates...")
         self.main_window.coords = np.column_stack((
