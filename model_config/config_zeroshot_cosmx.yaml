@@ -1,0 +1,21 @@
+data_name: "TMA23"
+r: 0
+name_truth: "none"
+tissue_region: "silicosis lung tissue"
+model_type: "zeroshot_end2end"
+openai_url: "/v1/chat/completions"
+use_full_name: false
+with_self_type: false
+with_region_name: true
+Graph_type: "none"
+with_negatives: false
+with_CoT: false
+minimal_f: 0  # threshold for cell type frequency
+minimal_gene_threshold: 0  # threshold for gene expression
+top_n: 7  # top n cell types and genes to be included
+with_numbers: false
+with_domain_name: true
+gpt_model: "gpt-4o-mini"
+oneshot_prompt: ""
+system_prompt: ""
+output_type: "niche"
