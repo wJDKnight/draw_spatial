@@ -212,7 +212,7 @@ class AnalysisWindow(QWidget):
         #     return
         
         try:
-            config = load_config("model_config/config_zeroshot_cosmx.yaml")
+            config = load_config("model_config/config_zeroshot.yaml")
             domain_text = self.domain_text_input.text()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
@@ -237,7 +237,7 @@ class AnalysisWindow(QWidget):
             model = genai.GenerativeModel("gemini-1.5-pro")
             gen_config = genai.types.GenerationConfig(temperature=1.0, max_output_tokens=4000)
             
-            config = load_config("./model_config/config_zeroshot_cosmx.yaml")
+            config = load_config("./model_config/config_zeroshot.yaml")
             domain_text = self.domain_text_input.text()
             if domain_text:
                 domain_mapping = {i: domain_text.split(",")[i] for i in range(len(domain_text.split(",")))}

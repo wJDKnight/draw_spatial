@@ -22,7 +22,7 @@ class PlottingOperations:
             self.update_plot()
 
     def update_plot(self):
-        print("Starting plot update...")
+        # print("Starting plot update...")
         if not all([self.main_window.x_combo.currentText(), self.main_window.y_combo.currentText(), self.main_window.cell_type_combo.currentText()]):
             print("Missing required columns, skipping plot update")
             return
@@ -41,43 +41,43 @@ class PlottingOperations:
             )
             return
 
-        print("Storing coordinates...")
+        # print("Storing coordinates...")
         self.main_window.coords = np.column_stack((
             self.main_window.data[self.main_window.x_column].values,
             self.main_window.data[self.main_window.y_column].values
         ))
 
-        print("Calling plot_data...")
+        # print("Calling plot_data...")
         self.plot_data()
-        print("Plot update complete!")
+        # print("Plot update complete!")
 
     def plot_data(self):
-        print("Starting plot_data...")
+        # print("Starting plot_data...")
         if self.main_window.data is None or not all([self.main_window.x_column, self.main_window.y_column]):
             print("Missing required data, skipping plot")
             return
 
         try:
-            print("Setting up plot...")
+            # print("Setting up plot...")
             # Store current view limits before clearing
             try:
                 current_xlim = self.ax.get_xlim()
                 current_ylim = self.ax.get_ylim()
                 had_previous_view = True
-                print("Stored previous view limits")
+                # print("Stored previous view limits")
             except:
                 had_previous_view = False
                 print("No previous view limits")
 
-            print("Clearing plot...")
+            # print("Clearing plot...")
             self.ax.clear()
             self.main_window.scatter_artists.clear()
 
-            print("Checking RGB colors...")
+            # print("Checking RGB colors...")
             rgb_colors = self.get_rgb_colors()
 
             if rgb_colors is not None:
-                print("Plotting with RGB colors...")
+                # print("Plotting with RGB colors...")
                 # Set dark grey background for RGB mode
                 self.ax.set_facecolor('#333333')
                 self.figure.set_facecolor('#333333')
@@ -100,7 +100,7 @@ class PlottingOperations:
                 for spine in self.ax.spines.values():
                     spine.set_color('white')
             else:
-                print("Plotting with categorical colors...")
+                # print("Plotting with categorical colors...")
                 # Reset to default white background for categorical coloring
                 self.ax.set_facecolor('white')
                 self.figure.set_facecolor('white')
@@ -181,10 +181,10 @@ class PlottingOperations:
                 self.ax.set_xlim(current_xlim)
                 self.ax.set_ylim(current_ylim)
 
-            print("Drawing plot...")
+            # print("Drawing plot...")
             self.canvas.draw()
             self.main_window.background = self.canvas.copy_from_bbox(self.ax.bbox)
-            print("Plot_data complete!")
+            # print("Plot_data complete!")
 
         except Exception as e:
             print(f"Error in plot_data: {e}")
@@ -276,7 +276,7 @@ class PlottingOperations:
         for i, col in enumerate([self.main_window.red_combo.currentText(),
                                self.main_window.green_combo.currentText(),
                                self.main_window.blue_combo.currentText()]):
-            if col != "None":
+            if col != "None" and col != "":
                 colors[:, i] = scaler.fit_transform(self.main_window.data[col].values.reshape(-1, 1)).ravel()
             else:
                 colors[:, i] = 0

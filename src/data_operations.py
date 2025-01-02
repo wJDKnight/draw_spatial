@@ -79,21 +79,21 @@ class DataOperations:
         return None
 
     def load_data(self):
-        print("Starting data load...")
+        # print("Starting data load...")
         file_name, _ = QFileDialog.getOpenFileName(self.main_window, "Open CSV File", "", "CSV Files (*.csv)")
         if file_name:
-            print(f"Loading file: {file_name}")
+            # print(f"Loading file: {file_name}")
 
             # Load data efficiently
-            print("Reading CSV...")
+            # print("Reading CSV...")
             self.main_window.data = pd.read_csv(file_name)
-            print(f"Loaded {len(self.main_window.data)} rows")
+            # print(f"Loaded {len(self.main_window.data)} rows")
 
-            print("Clearing existing data structures...")
+            # print("Clearing existing data structures...")
             self.main_window.annotations = {}
             self.main_window.selected_points.clear()
 
-            print("Updating column selectors...")
+            # print("Updating column selectors...")
             self.main_window.x_combo.blockSignals(True)
             self.main_window.y_combo.blockSignals(True)
             self.main_window.cell_type_combo.blockSignals(True)
@@ -103,17 +103,17 @@ class DataOperations:
             self.main_window.cell_type_combo.clear()
 
             all_columns = self.main_window.data.columns
-            print(f"Found {len(all_columns)} columns")
+            # print(f"Found {len(all_columns)} columns")
             self.main_window.x_combo.addItems(all_columns)
             self.main_window.y_combo.addItems(all_columns)
             self.main_window.cell_type_combo.addItems(all_columns)
 
-            print("Auto-detecting columns...")
+            # print("Auto-detecting columns...")
             x_col, y_col = self.detect_coordinate_columns(self.main_window.data)
             cell_type_col = self.detect_cell_type_column(self.main_window.data)
-            print(f"Detected columns - X: {x_col}, Y: {y_col}, Cell Type: {cell_type_col}")
+            # print(f"Detected columns - X: {x_col}, Y: {y_col}, Cell Type: {cell_type_col}")
 
-            print("Setting detected columns...")
+            # print("Setting detected columns...")
             if x_col and y_col:
                 self.main_window.x_combo.setCurrentText(x_col)
                 self.main_window.y_combo.setCurrentText(y_col)
@@ -125,24 +125,24 @@ class DataOperations:
             self.main_window.y_combo.blockSignals(False)
             self.main_window.cell_type_combo.blockSignals(False)
 
-            print("Clearing plot...")
+            # print("Clearing plot...")
             self.main_window.plot_ops.ax.clear()
             self.main_window.plot_ops.canvas.draw()
 
-            print("Checking for automatic plot update...")
+            # print("Checking for automatic plot update...")
             if x_col and y_col and cell_type_col:
-                print("Updating plot with detected columns...")
+                # print("Updating plot with detected columns...")
                 self.main_window.plot_ops.update_plot()
 
-            print("Updating continuous variable selectors...")
+            # print("Updating continuous variable selectors...")
             numeric_columns = self.main_window.data.select_dtypes(include=[np.number]).columns
-            print(f"Found {len(numeric_columns)} numeric columns")
+            # print(f"Found {len(numeric_columns)} numeric columns")
             for combo in [self.main_window.red_combo, self.main_window.green_combo, self.main_window.blue_combo]:
                 combo.clear()
                 combo.addItem("None")
                 combo.addItems(numeric_columns)
 
-            print("Data loading complete!")
+            # print("Data loading complete!")
 
     def save_annotations(self):
         if self.main_window.data is not None and self.main_window.annotations:
@@ -186,7 +186,7 @@ class DataOperations:
                 if state_data:
                     state_df = pd.DataFrame(state_data)
                     state_df.to_csv(file_name, index=False)
-                    print(f"Annotation state saved to {file_name}")
+                    # print(f"Annotation state saved to {file_name}")
                 else:
                     print("No annotations to save")
 
@@ -228,7 +228,7 @@ class DataOperations:
                 # Update the display
                 self.main_window.plot_ops.plot_data()
                 self.main_window.update_annotation_display()
-                print(f"Annotation state loaded from {file_name}")
+                # print(f"Annotation state loaded from {file_name}")
 
             except Exception as e:
                 print(f"Error loading annotation state: {e}")

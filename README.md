@@ -1,6 +1,6 @@
 # Spatial Transcriptomics Cell Annotation Tool
 
-An interactive GUI tool for manual annotation of cell types in spatial transcriptomics data. This tool allows researchers to visualize and annotate cells in spatial data through an intuitive interface.
+An interactive GUI tool for manual annotation of cell types in spatial transcriptomics data. This tool enables researchers to efficiently visualize, explore, and annotate cells in spatial transcriptomics datasets through an intuitive and user-friendly interface.
 
 ## Features
 
@@ -34,8 +34,8 @@ An interactive GUI tool for manual annotation of cell types in spatial transcrip
 
 1. Clone the repository:
 ```bash
-git clone [repository-url]
-cd spatial-transcriptomics-annotation
+git clone https://github.com/yourusername/draw_spatial.git
+cd draw_spatial
 ```
 
 2. Create conda environment:
@@ -47,6 +47,16 @@ conda env create -f environment.yml
 ```bash
 conda activate spatial_annotation
 ```
+
+## Configuration
+
+1. Configure the LLM API key:
+
+  Add Gemini "API_KEY" to the environment variable.
+
+2. Configure the settings when running LLM for niche analysis:
+
+  Change the settings in the "model_config/config_zeroshot.yaml" file.
 
 ## Usage
 
@@ -70,10 +80,23 @@ python main.py
 
 ## Input Data Format
 
-The input CSV file should contain at least these columns:
-- Spatial coordinates (X, Y)
-- Initial cell type classifications
-- Optional: Additional columns for RGB visualization
+The input data should be in CSV format with the following requirements:
+
+### Required Columns:
+- Spatial coordinates (X, Y): Numeric columns representing spatial positions
+- Cell type classifications: Initial cell type labels (if available)
+
+### Optional Columns:
+- Gene expression data: For RGB visualization
+- Additional metadata: Any other cell-specific information
+
+Example format:
+```csv
+X,Y,cell_type,gene1,gene2,metadata
+100,200,T-cell,0.5,0.8,sample1
+150,250,B-cell,0.3,0.6,sample1
+...
+```
 
 ## Keyboard Shortcuts
 
@@ -93,12 +116,7 @@ The tool exports a CSV file containing:
 
 ## Requirements
 
-- Python 3.9+
-- PyQt5
-- pandas
-- matplotlib
-- numpy
-- scikit-learn
+See the "environment.yml" file for the required packages.
 
 ## Platform Compatibility
 

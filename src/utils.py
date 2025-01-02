@@ -124,7 +124,7 @@ def extract_output_microenvironments(text):
     if len(matches) == 0:
         text = text.replace("{", "")
         text = text.replace("}", "")
-        print(f"Warning: No matches found for Outputs:{{}}, returning the whole {text}")
+        print(f"Warning: No matches found for Outputs:{{}}")
         extracted_data['content'] = text
         return extracted_data
 

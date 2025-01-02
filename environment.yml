@@ -11,3 +11,6 @@ dependencies:
   - pip
   - pip:
     - scikit-learn 
+    - google-generativeai
+    - markdown2
+    - pyyaml
