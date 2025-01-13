@@ -277,7 +277,7 @@ class PlottingOperations:
                                self.main_window.green_combo.currentText(),
                                self.main_window.blue_combo.currentText()]):
             if col != "None" and col != "":
-                colors[:, i] = scaler.fit_transform(self.main_window.data[col].values.reshape(-1, 1)).ravel()
+                colors[:, i] = np.round(scaler.fit_transform(self.main_window.data[col].values.reshape(-1, 1)),6).ravel()
             else:
                 colors[:, i] = 0
 
