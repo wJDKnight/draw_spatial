@@ -2,6 +2,8 @@
 
 An interactive GUI tool for manual annotation of cell types in spatial transcriptomics data. This tool enables researchers to efficiently visualize, explore, and annotate cells in spatial transcriptomics datasets through an intuitive and user-friendly interface.
 
+![example](./icons/example.png)
+
 ## Features
 
 - **Interactive Visualization**
