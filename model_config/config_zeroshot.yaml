@@ -1,7 +1,7 @@
 data_name: "TMA23"
 r: 0
 name_truth: "none"
-tissue_region: "silicosis lung tissue"  # the tissue region of the data
+tissue_region: "COPD lung tissue"  # the tissue region of the data  # silicosis lung tissue # COPD lung tissue # normal lung tissue
 model_type: "zeroshot_end2end"
 openai_url: "/v1/chat/completions"
 use_full_name: false
