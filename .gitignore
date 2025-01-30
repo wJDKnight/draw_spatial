@@ -1,4 +1,4 @@
-*.csv
+data/
 .DS_Store
 *.txt
 __pycache__/

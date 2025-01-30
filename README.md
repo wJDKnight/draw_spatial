@@ -34,6 +34,10 @@ An interactive GUI tool for manual annotation of cell types in spatial transcrip
 
 ## Installation
 
+First, install [conda](https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html).
+
+Then:
+
 1. Clone the repository:
 ```bash
 git clone https://git.yale.edu/yanlab/draw_spatial.git
@@ -50,8 +54,8 @@ conda env create -f environment.yml
 conda activate spatial_annotation
 ```
 
-## Configuration
-
+## Configuration (Optional)
+Only needed if you want to run LLM for niche analysis (basic, not the full version).
 1. Configure the LLM API key:
 
   Add Gemini "API_KEY" to the environment variable.
