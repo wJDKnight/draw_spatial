@@ -36,7 +36,7 @@ An interactive GUI tool for manual annotation of cell types in spatial transcrip
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/draw_spatial.git
+git clone https://git.yale.edu/yanlab/draw_spatial.git
 cd draw_spatial
 ```
 
