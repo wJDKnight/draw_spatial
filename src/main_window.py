@@ -8,7 +8,7 @@ matplotlib.use('Qt5Agg')  # Set the backend before importing pyplot
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QHBoxLayout, QPushButton, QFileDialog, QLabel,
                            QComboBox, QLineEdit, QSlider, QCompleter, QScrollArea, QSizePolicy,
-                           QMenuBar, QMenu, QAction)
+                           QMenuBar, QMenu, QAction, QListWidget, QListWidgetItem)
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QKeySequence, QIcon
 
@@ -380,13 +380,10 @@ class CellAnnotationTool(QMainWindow):
         # Add cell type filter dropdown
         cell_type_filter_layout = QHBoxLayout()
         cell_type_filter_layout.addWidget(QLabel("Filter Cell Types:"))
-        self.cell_type_filter_combo = QComboBox()
-        self.cell_type_filter_combo.setPlaceholderText("Select cell types to display")
-        self.cell_type_filter_combo.setEditable(True)
-        self.cell_type_filter_combo.lineEdit().setReadOnly(True)
-        self.cell_type_filter_combo.lineEdit().setPlaceholderText("Select cell types to display")
-        self.cell_type_filter_combo.currentTextChanged.connect(self.plot_ops.check_and_update_plot)
-        cell_type_filter_layout.addWidget(self.cell_type_filter_combo)
+        self.cell_type_filter_list = QListWidget()
+        self.cell_type_filter_list.setMaximumHeight(100)  # Limit height to show ~5 items
+        self.cell_type_filter_list.itemChanged.connect(self.plot_ops.check_and_update_plot)
+        cell_type_filter_layout.addWidget(self.cell_type_filter_list)
         coord_layout.addLayout(cell_type_filter_layout)
 
         x_layout = QHBoxLayout()
@@ -507,17 +504,69 @@ class CellAnnotationTool(QMainWindow):
         self.annotation_display.setText("\n".join(text))
 
     def update_cell_type_filter(self):
-        """Update cell type filter dropdown when cell type column changes"""
-        self.cell_type_filter_combo.clear()
-        self.cell_type_filter_combo.addItem("All")
+        """Update cell type filter list when cell type column changes"""
+        # Disconnect existing connections if any
+        try:
+            self.cell_type_filter_list.itemChanged.disconnect()
+        except:
+            pass
+            
+        self.cell_type_filter_list.clear()
         
         if self.data is not None and self.cell_type_combo.currentText():
+            # Add "Select All" item
+            select_all_item = QListWidgetItem("Select All")
+            select_all_item.setFlags(select_all_item.flags() | Qt.ItemIsUserCheckable)
+            select_all_item.setCheckState(Qt.Checked)
+            self.cell_type_filter_list.addItem(select_all_item)
+            
+            # Add cell type items
             cell_type_col = self.cell_type_combo.currentText()
             unique_types = sorted(self.data[cell_type_col].unique())
-            self.cell_type_filter_combo.addItems([str(t) for t in unique_types])
+            for cell_type in unique_types:
+                item = QListWidgetItem(str(cell_type))
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setCheckState(Qt.Checked)
+                self.cell_type_filter_list.addItem(item)
+            
+            # Connect select all functionality after adding all items
+            self.cell_type_filter_list.itemChanged.connect(self.handle_select_all)
         
-        self.cell_type_filter_combo.setCurrentText("All")
         self.plot_ops.check_and_update_plot()
+        
+    def handle_select_all(self, item):
+        """Handle the Select All checkbox state change"""
+        # Temporarily disconnect the itemChanged signal to prevent multiple updates
+        self.cell_type_filter_list.itemChanged.disconnect()
+        
+        try:
+            if item.text() == "Select All":
+                state = item.checkState()
+                # Update all items at once
+                for i in range(1, self.cell_type_filter_list.count()):
+                    self.cell_type_filter_list.item(i).setCheckState(state)
+            else:
+                # Update Select All state based on other items
+                all_checked = True
+                for i in range(1, self.cell_type_filter_list.count()):
+                    if self.cell_type_filter_list.item(i).checkState() == Qt.Unchecked:
+                        all_checked = False
+                        break
+                # Update Select All without triggering itemChanged
+                self.cell_type_filter_list.item(0).setCheckState(Qt.Checked if all_checked else Qt.Unchecked)
+        finally:
+            # Reconnect the signal and update plot once
+            self.cell_type_filter_list.itemChanged.connect(self.handle_select_all)
+            self.plot_ops.check_and_update_plot()
+
+    def get_selected_cell_types(self):
+        """Get list of selected cell types from the filter list"""
+        selected_types = []
+        for i in range(1, self.cell_type_filter_list.count()):  # Skip Select All item
+            item = self.cell_type_filter_list.item(i)
+            if item.checkState() == Qt.Checked:
+                selected_types.append(item.text())
+        return selected_types if selected_types else None  # Return None if no types selected
 
     def show_analysis_window(self):
         if self.analysis_window is None:

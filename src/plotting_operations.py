@@ -112,12 +112,12 @@ class PlottingOperations:
 
                 annotated_indices = np.array(list(set().union(*self.main_window.annotations.values()))) if self.main_window.annotations else np.array([])
 
-                # Get selected cell type filter
-                selected_type = self.main_window.cell_type_filter_combo.currentText()
+                # Get selected cell types
+                selected_types = self.main_window.get_selected_cell_types()
 
                 for cell_type in unique_types:
-                    # Skip if a specific type is selected and this isn't it
-                    if selected_type != "All" and str(cell_type) != selected_type:
+                    # Skip if not in selected types
+                    if selected_types is not None and str(cell_type) not in selected_types:
                         continue
 
                     mask = (self.main_window.data[self.main_window.cell_type_column].values == cell_type)
