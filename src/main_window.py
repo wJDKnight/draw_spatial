@@ -373,8 +373,21 @@ class CellAnnotationTool(QMainWindow):
         cell_type_layout = QHBoxLayout()
         cell_type_layout.addWidget(QLabel("Cell Type Column:"))
         self.cell_type_combo = QComboBox()
+        self.cell_type_combo.currentTextChanged.connect(self.update_cell_type_filter)
         cell_type_layout.addWidget(self.cell_type_combo)
         coord_layout.addLayout(cell_type_layout)
+
+        # Add cell type filter dropdown
+        cell_type_filter_layout = QHBoxLayout()
+        cell_type_filter_layout.addWidget(QLabel("Filter Cell Types:"))
+        self.cell_type_filter_combo = QComboBox()
+        self.cell_type_filter_combo.setPlaceholderText("Select cell types to display")
+        self.cell_type_filter_combo.setEditable(True)
+        self.cell_type_filter_combo.lineEdit().setReadOnly(True)
+        self.cell_type_filter_combo.lineEdit().setPlaceholderText("Select cell types to display")
+        self.cell_type_filter_combo.currentTextChanged.connect(self.plot_ops.check_and_update_plot)
+        cell_type_filter_layout.addWidget(self.cell_type_filter_combo)
+        coord_layout.addLayout(cell_type_filter_layout)
 
         x_layout = QHBoxLayout()
         x_layout.addWidget(QLabel("X Column:"))
@@ -492,6 +505,19 @@ class CellAnnotationTool(QMainWindow):
         for cell_type, indices in self.annotations.items():
             text.append(f"{cell_type}: {len(indices)} cells")
         self.annotation_display.setText("\n".join(text))
+
+    def update_cell_type_filter(self):
+        """Update cell type filter dropdown when cell type column changes"""
+        self.cell_type_filter_combo.clear()
+        self.cell_type_filter_combo.addItem("All")
+        
+        if self.data is not None and self.cell_type_combo.currentText():
+            cell_type_col = self.cell_type_combo.currentText()
+            unique_types = sorted(self.data[cell_type_col].unique())
+            self.cell_type_filter_combo.addItems([str(t) for t in unique_types])
+        
+        self.cell_type_filter_combo.setCurrentText("All")
+        self.plot_ops.check_and_update_plot()
 
     def show_analysis_window(self):
         if self.analysis_window is None:

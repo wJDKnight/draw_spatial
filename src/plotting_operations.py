@@ -112,7 +112,14 @@ class PlottingOperations:
 
                 annotated_indices = np.array(list(set().union(*self.main_window.annotations.values()))) if self.main_window.annotations else np.array([])
 
+                # Get selected cell type filter
+                selected_type = self.main_window.cell_type_filter_combo.currentText()
+
                 for cell_type in unique_types:
+                    # Skip if a specific type is selected and this isn't it
+                    if selected_type != "All" and str(cell_type) != selected_type:
+                        continue
+
                     mask = (self.main_window.data[self.main_window.cell_type_column].values == cell_type)
                     if len(annotated_indices):
                         mask &= ~np.isin(np.arange(len(self.main_window.data)), annotated_indices)
@@ -161,11 +168,15 @@ class PlottingOperations:
                 )
                 self.main_window.scatter_artists['selected'] = scatter
 
-            # Create legend
+            # Create legend only if there are labeled artists and not in RGB mode
             if rgb_colors is None:  # Only show legend for categorical coloring
-                legend = self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
-                for handle in legend.legend_handles:
-                    handle._sizes = [30]
+                # Get all artists that have labels
+                labeled_artists = [artist for artist in self.main_window.scatter_artists.values() 
+                                 if artist.get_label() and not artist.get_label().startswith('_')]
+                if labeled_artists:  # Only create legend if there are labeled artists
+                    legend = self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+                    for handle in legend.legend_handles:
+                        handle._sizes = [30]
 
             self.ax.set_aspect('equal', adjustable='box')
 

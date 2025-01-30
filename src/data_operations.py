@@ -142,6 +142,9 @@ class DataOperations:
                 combo.addItem("None")
                 combo.addItems(numeric_columns)
 
+            # Cell type filter will be updated by the cell type column change signal
+            self.main_window.update_cell_type_filter()
+
             # print("Data loading complete!")
 
     def save_annotations(self):
