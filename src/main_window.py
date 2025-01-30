@@ -186,10 +186,11 @@ class CellAnnotationTool(QMainWindow):
 
         # Create matplotlib figure with adjusted size for legend
         self.plot_ops.figure, self.plot_ops.ax = matplotlib.pyplot.subplots(figsize=(10, 8))
-        # Add space for the legend on the right
-        self.plot_ops.figure.subplots_adjust(right=0.8)
+        # Add space for the legend on the right, but reduce margins
+        self.plot_ops.figure.subplots_adjust(left=0.05, right=0.8, top=0.95, bottom=0.05)
         self.plot_ops.canvas = self.plot_ops.FigureCanvas(self.plot_ops.figure)
         layout.addWidget(self.plot_ops.canvas, stretch=4)
+        layout.setSpacing(0)  # Reduce spacing between plot and control panel
 
         # Create control panel
         control_panel = QWidget()
@@ -379,9 +380,9 @@ class CellAnnotationTool(QMainWindow):
 
         # Add cell type filter dropdown
         cell_type_filter_layout = QHBoxLayout()
-        cell_type_filter_layout.addWidget(QLabel("Filter Cell Types:"))
+        cell_type_filter_layout.addWidget(QLabel("Filter:"))
         self.cell_type_filter_list = QListWidget()
-        self.cell_type_filter_list.setMaximumHeight(100)  # Limit height to show ~5 items
+        self.cell_type_filter_list.setMaximumHeight(150)  # Limit height to show ~5 items
         self.cell_type_filter_list.itemChanged.connect(self.plot_ops.check_and_update_plot)
         cell_type_filter_layout.addWidget(self.cell_type_filter_list)
         coord_layout.addLayout(cell_type_filter_layout)
