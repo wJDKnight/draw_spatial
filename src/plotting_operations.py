@@ -178,7 +178,7 @@ class PlottingOperations:
                     for handle in legend.legend_handles:
                         handle._sizes = [30]
 
-            self.ax.set_aspect('equal', adjustable='box')
+            self.ax.set_aspect('equal', adjustable='datalim')
 
             # Store or restore view limits
             if not had_previous_view:
