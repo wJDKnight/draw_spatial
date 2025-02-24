@@ -40,7 +40,7 @@ Then:
 
 1. Clone the repository:
 ```bash
-git clone https://git.yale.edu/yanlab/draw_spatial.git
+git clone https://.../draw_spatial.git
 cd draw_spatial
 ```
 
